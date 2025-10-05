@@ -1,8 +1,18 @@
+/* Design System tokens */
 @import url("../../../design-system/iofbim-design-system/tokens.css");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Back-compat aliases using Tailwind utilities */
+@layer components {
+  .nav-item { @apply px-4 py-1.5 rounded-full text-sm font-semibold; }
+  .nav-item:hover { background-color: rgba(255,255,255,0.30); color: #ffffff; }
+  .gradientBG { background-image: linear-gradient(to right, rgb(var(--color-prim)), rgb(var(--color-accent))); }
+  .gradientCardBG { background-image: linear-gradient(to bottom right, rgb(var(--color-prim)), rgb(var(--color-accent))); }
+  .gradientBG2 { background-image: linear-gradient(to right, rgb(var(--color-textDark)), rgb(var(--color-textMid))); }
+  .imageMask { -webkit-mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent); mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent); }
+}
 
 :root {
   --background: #ffffff;
