@@ -1,0 +1,3 @@
+[submodule "design-system/iofbim-design-system"]
+	path = design-system/iofbim-design-system
+	url = https://github.com/iofbim/iofbim-design-system
