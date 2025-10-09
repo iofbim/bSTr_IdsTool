@@ -30,6 +30,7 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-serif, Arial, Helvetica, sans-serif);
+  font-size: 14px; /* reduced global font size */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

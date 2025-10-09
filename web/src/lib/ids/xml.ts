@@ -5,6 +5,11 @@ import type {
   IDSPropertyRequirement,
   IDSOptionality,
   IDSSection,
+  IDSEntityFacet,
+  IDSAttributeRequirement,
+  IDSMaterialRequirement,
+  IDSClassificationRequirement,
+  IDSPartOfFacet,
 } from "./types";
 
 // Minimal IDS XML mapping (simplified for authoring/testing)
@@ -18,10 +23,17 @@ type IDSXMLProperty = {
     Datatype?: string;
     Operator?: IDSPropertyRequirement["operator"];
     Value?: string;
+    "@_minOccurs"?: string | number;
+    "@_maxOccurs"?: string | number;
   };
 };
 
 type IDSXMLClassification = { Classification: { System: string; Code?: string; Name?: string } };
+
+type IDSXMLEntity = { Entity: { IfcClass?: string; PredefinedType?: string; "@_minOccurs"?: string | number; "@_maxOccurs"?: string | number } };
+type IDSXMLAttribute = { Attribute: { Name: string; Datatype?: string; Operator?: IDSAttributeRequirement["operator"]; Value?: string; "@_minOccurs"?: string | number; "@_maxOccurs"?: string | number } };
+type IDSXMLMaterial = { Material: { Operator?: IDSMaterialRequirement["operator"]; Value?: string; "@_minOccurs"?: string | number; "@_maxOccurs"?: string | number } };
+type IDSXMLPartOf = { PartOf: { Relation?: string; Entity?: IDSXMLEntity["Entity"]; "@_minOccurs"?: string | number; "@_maxOccurs"?: string | number } };
 
 type IDSXMLSpecification = {
   Specification: {
@@ -32,9 +44,18 @@ type IDSXMLSpecification = {
       "@_maxOccurs"?: string | number;
       IfcClass?: string;
       Classifications?: IDSXMLClassification[];
+      Entities?: IDSXMLEntity[];
+      Attributes?: IDSXMLAttribute[];
+      Materials?: IDSXMLMaterial[];
+      PartOf?: IDSXMLPartOf[];
     };
     Requirements?: {
+      Entities?: IDSXMLEntity[];
+      Classifications?: IDSXMLClassification[];
+      Attributes?: IDSXMLAttribute[];
       Properties?: IDSXMLProperty[];
+      Materials?: IDSXMLMaterial[];
+      PartOf?: IDSXMLPartOf[];
     };
   };
 };
@@ -64,6 +85,60 @@ function toPropertyNode(prop: IDSPropertyRequirement): IDSXMLProperty {
   if (prop.datatype) node.Property.Datatype = prop.datatype;
   if (prop.operator) node.Property.Operator = prop.operator;
   if (prop.value !== undefined) node.Property.Value = Array.isArray(prop.value) ? prop.value.join(", ") : String(prop.value);
+  if (prop.optionality) {
+    const occ = optionalityToOccurs(prop.optionality);
+    node.Property["@_minOccurs"] = occ.min;
+    node.Property["@_maxOccurs"] = occ.max;
+  }
+  return node;
+}
+
+function toEntityNode(e: IDSEntityFacet, opt?: IDSOptionality): IDSXMLEntity {
+  const node: IDSXMLEntity = { Entity: {} };
+  if (e.ifcClass) node.Entity.IfcClass = e.ifcClass;
+  if (e.predefinedType) node.Entity.PredefinedType = e.predefinedType;
+  if (opt || e.optionality) {
+    const occ = optionalityToOccurs((opt || e.optionality) as IDSOptionality);
+    node.Entity["@_minOccurs"] = occ.min;
+    node.Entity["@_maxOccurs"] = occ.max;
+  }
+  return node;
+}
+
+function toAttributeNode(a: IDSAttributeRequirement): IDSXMLAttribute {
+  const node: IDSXMLAttribute = { Attribute: { Name: a.name } };
+  if (a.datatype) node.Attribute.Datatype = a.datatype;
+  if (a.operator) node.Attribute.Operator = a.operator as any;
+  if (a.value !== undefined) node.Attribute.Value = Array.isArray(a.value) ? a.value.join(", ") : String(a.value);
+  if (a.optionality) {
+    const occ = optionalityToOccurs(a.optionality);
+    node.Attribute["@_minOccurs"] = occ.min;
+    node.Attribute["@_maxOccurs"] = occ.max;
+  }
+  return node;
+}
+
+function toMaterialNode(m: IDSMaterialRequirement): IDSXMLMaterial {
+  const node: IDSXMLMaterial = { Material: {} };
+  if (m.operator) node.Material.Operator = m.operator as any;
+  if (m.value !== undefined) node.Material.Value = Array.isArray(m.value) ? m.value.join(", ") : String(m.value);
+  if (m.optionality) {
+    const occ = optionalityToOccurs(m.optionality);
+    node.Material["@_minOccurs"] = occ.min;
+    node.Material["@_maxOccurs"] = occ.max;
+  }
+  return node;
+}
+
+function toPartOfNode(p: IDSPartOfFacet): IDSXMLPartOf {
+  const node: IDSXMLPartOf = { PartOf: {} } as any;
+  if (p.relation) node.PartOf.Relation = p.relation;
+  if (p.entity) node.PartOf.Entity = toEntityNode(p.entity).Entity;
+  if (p.optionality) {
+    const occ = optionalityToOccurs(p.optionality);
+    node.PartOf["@_minOccurs"] = occ.min;
+    node.PartOf["@_maxOccurs"] = occ.max;
+  }
   return node;
 }
 
@@ -78,6 +153,16 @@ function optionalityToOccurs(opt: IDSOptionality): { min: number; max: string | 
   }
 }
 
+
+function occursFromAttrs(node: any): IDSOptionality | undefined {
+  const min = String((node as any)?.['@_minOccurs'] ?? '');
+  const max = String((node as any)?.['@_maxOccurs'] ?? '');
+  if (!min && !max) return undefined;
+  if (min === '1' && (max === '' || max === 'unbounded')) return 'required';
+  if (min === '0' && (max === '' || max === 'unbounded')) return 'optional';
+  if (min === '0' && max === '0') return 'prohibited';
+  return undefined;
+}
 function toSpecificationNode(spec: IDSSpecification): IDSXMLSpecification {
   const props = spec.requirements?.properties?.map(toPropertyNode) ?? [];
   const occurs = optionalityToOccurs(spec.optionality);
@@ -92,6 +177,10 @@ function toSpecificationNode(spec: IDSSpecification): IDSXMLSpecification {
             Classification: { System: c.system, Code: c.code ?? undefined, Name: c.name ?? undefined },
           })),
           Properties: spec.applicability.properties?.map(toPropertyNode),
+          Entities: spec.applicability.entities?.map((e) => toEntityNode(e)),
+          Attributes: spec.applicability.attributes?.map((a) => toAttributeNode(a)),
+          Materials: spec.applicability.materials?.map((m) => toMaterialNode(m)),
+          PartOf: spec.applicability.partOf?.map((p) => toPartOfNode(p)),
         },
       }
     : {
@@ -106,7 +195,21 @@ function toSpecificationNode(spec: IDSSpecification): IDSXMLSpecification {
       Title: spec.title,
       Description: spec.description ?? undefined,
       ...(applicability ?? {}),
-      Requirements: props.length ? { Properties: props } : undefined,
+      Requirements:
+        props.length || (spec.requirements?.entities?.length || 0) || (spec.requirements?.attributes?.length || 0) ||
+        (spec.requirements?.materials?.length || 0) || (spec.requirements?.classifications?.length || 0) ||
+        (spec.requirements?.partOf?.length || 0)
+          ? {
+              Entities: spec.requirements.entities?.map((e) => toEntityNode(e, e.optionality)),
+              Classifications: spec.requirements.classifications?.map((c) => ({
+                Classification: { System: c.system, Code: c.code ?? undefined, Name: c.name ?? undefined },
+              })),
+              Attributes: spec.requirements.attributes?.map((a) => toAttributeNode(a)),
+              Properties: props,
+              Materials: spec.requirements.materials?.map((m) => toMaterialNode(m)),
+              PartOf: spec.requirements.partOf?.map((p) => toPartOfNode(p)),
+            }
+          : undefined,
     },
   };
 }
@@ -182,6 +285,48 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
         name: c?.["Name"] ? String(c?.["Name"]) : undefined,
       }));
 
+    // Applicability other facets
+    const entArr = asArray<Record<string, unknown>>(applicabilityNode?.["Entities"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["Entity"]) || asArray<Record<string, unknown>>(x)
+    );
+    const entities: IDSEntityFacet[] = entArr.map((e, eidx) => ({
+      id: cryptoRandomId(`aent-${idx}-${eidx}`),
+      ifcClass: e?.["IfcClass"] ? String(e?.["IfcClass"]) : undefined,
+      predefinedType: e?.["PredefinedType"] ? String(e?.["PredefinedType"]) : undefined,
+    }));
+
+    const attrArr = asArray<Record<string, unknown>>(applicabilityNode?.["Attributes"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["Attribute"]) || asArray<Record<string, unknown>>(x)
+    );
+    const attributes: IDSAttributeRequirement[] = attrArr.map((a, aidx) => ({
+      id: cryptoRandomId(`aattr-${idx}-${aidx}`),
+      name: String((a?.["Name"] as string) ?? ""),
+      datatype: a?.["Datatype"] ? String(a?.["Datatype"]) : undefined,
+      operator: (a?.["Operator"] as IDSAttributeRequirement["operator"]) || undefined,
+      value: a?.["Value"] as string | undefined,
+    }));
+
+    const matArr = asArray<Record<string, unknown>>(applicabilityNode?.["Materials"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["Material"]) || asArray<Record<string, unknown>>(x)
+    );
+    const materials: IDSMaterialRequirement[] = matArr.map((m, midx) => ({
+      id: cryptoRandomId(`amat-${idx}-${midx}`),
+      operator: (m?.["Operator"] as IDSMaterialRequirement["operator"]) || undefined,
+      value: m?.["Value"] as string | undefined,
+    }));
+
+    const partArr = asArray<Record<string, unknown>>(applicabilityNode?.["PartOf"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["PartOf"]) || asArray<Record<string, unknown>>(x)
+    );
+    const partOf: IDSPartOfFacet[] = partArr.map((p, pidx) => ({
+      id: cryptoRandomId(`apart-${idx}-${pidx}`),
+      relation: p?.["Relation"] ? String(p?.["Relation"]) : undefined,
+      entity: (() => {
+        const en = pickObject(p?.["Entity"]);
+        return en ? { id: cryptoRandomId(`ent-${idx}-${pidx}`), ifcClass: en?.["IfcClass"] as string | undefined, predefinedType: en?.["PredefinedType"] as string | undefined } : undefined;
+      })(),
+    }));
+
     // Optionality from min/max occurs
     const minOccurs = (applicabilityNode as any)?.["@_minOccurs"];
     const maxOccurs = (applicabilityNode as any)?.["@_maxOccurs"];
@@ -198,8 +343,54 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
         ifcClass: applicabilityNode?.["IfcClass"] ? String(applicabilityNode?.["IfcClass"]) : undefined,
         classifications,
         properties: appProperties,
+        entities,
+        attributes,
+        materials,
+        partOf,
       },
-      requirements: { properties },
+      requirements: {
+        entities: asArray<Record<string, unknown>>(reqsNode?.["Entities"]) // entities in requirements
+          .flatMap((x) => asArray<Record<string, unknown>>(pickObject(x)?.["Entity"]) || asArray<Record<string, unknown>>(x))
+          .map((e, eidx) => ({
+            id: cryptoRandomId(`rent-${idx}-${eidx}`),
+            ifcClass: e?.["IfcClass"] ? String(e?.["IfcClass"]) : undefined,
+            predefinedType: e?.["PredefinedType"] ? String(e?.["PredefinedType"]) : undefined,
+            optionality: occursFromAttrs(e),
+          } as IDSEntityFacet)),
+        classifications: asArray<Record<string, unknown>>(reqsNode?.["Classifications"]) // classifications in requirements
+          .flatMap((x) => asArray<Record<string, unknown>>(pickObject(x)?.["Classification"]) || asArray<Record<string, unknown>>(x))
+          .map((c, cidx) => ({ id: cryptoRandomId(`rcls-${idx}-${cidx}`), system: String((c?.["System"] as string) ?? ""), code: c?.["Code"] ? String(c?.["Code"]) : undefined } as IDSClassificationRequirement)),
+        attributes: asArray<Record<string, unknown>>(reqsNode?.["Attributes"]) // attributes in requirements
+          .flatMap((x) => asArray<Record<string, unknown>>(pickObject(x)?.["Attribute"]) || asArray<Record<string, unknown>>(x))
+          .map((a, aidx) => ({
+            id: cryptoRandomId(`rattr-${idx}-${aidx}`),
+            name: String((a?.["Name"] as string) ?? ""),
+            datatype: a?.["Datatype"] ? String(a?.["Datatype"]) : undefined,
+            operator: (a?.["Operator"] as IDSAttributeRequirement["operator"]) || undefined,
+            value: a?.["Value"] as string | undefined,
+            optionality: occursFromAttrs(a),
+          } as IDSAttributeRequirement)),
+        properties: properties,
+        materials: asArray<Record<string, unknown>>(reqsNode?.["Materials"]) // materials in requirements
+          .flatMap((x) => asArray<Record<string, unknown>>(pickObject(x)?.["Material"]) || asArray<Record<string, unknown>>(x))
+          .map((m, midx) => ({
+            id: cryptoRandomId(`rmat-${idx}-${midx}`),
+            operator: (m?.["Operator"] as IDSMaterialRequirement["operator"]) || undefined,
+            value: m?.["Value"] as string | undefined,
+            optionality: occursFromAttrs(m),
+          } as IDSMaterialRequirement)),
+        partOf: asArray<Record<string, unknown>>(reqsNode?.["PartOf"]) // partOf in requirements
+          .flatMap((x) => asArray<Record<string, unknown>>(pickObject(x)?.["PartOf"]) || asArray<Record<string, unknown>>(x))
+          .map((p, pidx) => ({
+            id: cryptoRandomId(`rpart-${idx}-${pidx}`),
+            relation: p?.["Relation"] ? String(p?.["Relation"]) : undefined,
+            entity: (() => {
+              const en = pickObject(p?.["Entity"]);
+              return en ? { id: cryptoRandomId(`rent-${idx}-${pidx}`), ifcClass: en?.["IfcClass"] as string | undefined, predefinedType: en?.["PredefinedType"] as string | undefined } : undefined;
+            })(),
+            optionality: occursFromAttrs(p),
+          } as IDSPartOfFacet)),
+      },
     };
   });
 
@@ -282,3 +473,6 @@ function asArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v as T[];
   return v !== undefined ? ([v] as T[]) : [];
 }
+
+
+
