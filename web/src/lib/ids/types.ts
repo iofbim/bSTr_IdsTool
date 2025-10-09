@@ -3,6 +3,7 @@ export type UUID = string;
 export interface IDSPropertyRequirement {
   id: UUID;
   name: string; // e.g., "FireRating"
+  propertySet?: string; // e.g., "Pset_WallCommon"
   datatype?: string; // e.g., "IfcLabel"
   operator?: "equals" | "contains" | "in" | "matches" | "present";
   value?: string | number | boolean | string[];
@@ -18,14 +19,27 @@ export interface IDSClassificationRequirement {
 export interface IDSApplicability {
   ifcClass?: string; // e.g., "IfcWall"
   classifications?: IDSClassificationRequirement[];
+  properties?: IDSPropertyRequirement[]; // allow narrowing by Pset/Property
 }
 
-export interface IDSRequirementGroup {
+export type IDSOptionality = "required" | "optional" | "prohibited";
+
+export interface IDSSpecification {
   id: UUID;
   title: string;
   description?: string;
-  applicability?: IDSApplicability;
-  properties: IDSPropertyRequirement[];
+  optionality: IDSOptionality; // maps to minOccurs/maxOccurs on applicability
+  applicability?: IDSApplicability; // facets describing what this spec applies to
+  requirements: {
+    properties: IDSPropertyRequirement[]; // facets describing what is required
+  };
+}
+
+export interface IDSSection {
+  id: UUID;
+  title: string;
+  description?: string;
+  specifications: IDSSpecification[];
 }
 
 export interface IDSHeader {
@@ -38,7 +52,7 @@ export interface IDSHeader {
 
 export interface IDSRoot {
   header: IDSHeader;
-  requirements: IDSRequirementGroup[];
+  sections: IDSSection[];
 }
 
 export type IDSValidationResult = {
@@ -46,4 +60,3 @@ export type IDSValidationResult = {
   summary: string;
   details?: unknown;
 };
-

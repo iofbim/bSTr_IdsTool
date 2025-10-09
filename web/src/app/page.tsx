@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ds/Textarea";
 import { Select } from "@/components/ds/Select";
 import { Dialog } from "@/components/ds/Dialog";
 import { exportToIDSXML, parseIDSXML } from "@/lib/ids/xml";
-import type { IDSPropertyRequirement, IDSRequirementGroup, IDSRoot } from "@/lib/ids/types";
+import type { IDSPropertyRequirement, IDSRoot, IDSSpecification, IDSSection, IDSOptionality } from "@/lib/ids/types";
 
 function newProperty(): IDSPropertyRequirement {
   return {
@@ -18,20 +18,30 @@ function newProperty(): IDSPropertyRequirement {
   };
 }
 
-function newGroup(): IDSRequirementGroup {
+function newSpecification(): IDSSpecification {
   return {
-    id: `req-${Math.random().toString(36).slice(2)}`,
-    title: "New Requirement",
+    id: `spec-${Math.random().toString(36).slice(2)}`,
+    title: "New Specification",
     description: "",
-    applicability: { ifcClass: "" },
-    properties: [newProperty()],
+    optionality: "required",
+    applicability: { ifcClass: "", properties: [] },
+    requirements: { properties: [newProperty()] },
+  };
+}
+
+function newSection(): IDSSection {
+  return {
+    id: `section-${Math.random().toString(36).slice(2)}`,
+    title: "New Section",
+    description: "",
+    specifications: [newSpecification()],
   };
 }
 
 export default function Page() {
   const [ids, setIds] = useState<IDSRoot>({
     header: { title: "Untitled IDS", description: "", author: "", date: "", version: "0.1.0" },
-    requirements: [newGroup()],
+    sections: [newSection()],
   });
 
   const [exportOpen, setExportOpen] = useState(false);
@@ -58,26 +68,70 @@ export default function Page() {
     load();
   }, []);
 
-  const addGroup = useCallback(() => {
-    setIds((prev) => ({ ...prev, requirements: [...prev.requirements, newGroup()] }));
+  const addSection = useCallback(() => {
+    setIds((prev) => ({ ...prev, sections: [...(prev.sections || []), newSection()] }));
   }, []);
 
-  const removeGroup = useCallback((id: string) => {
-    setIds((prev) => ({ ...prev, requirements: prev.requirements.filter((g) => g.id !== id) }));
+  const removeSection = useCallback((sid: string) => {
+    setIds((prev) => ({ ...prev, sections: (prev.sections || []).filter((s) => s.id !== sid) }));
   }, []);
 
-  const addProperty = useCallback((gid: string) => {
+  const addSpecification = useCallback((sid: string) => {
     setIds((prev) => ({
       ...prev,
-      requirements: prev.requirements.map((g) => (g.id === gid ? { ...g, properties: [...g.properties, newProperty()] } : g)),
+      sections: (prev.sections || []).map((s) =>
+        s.id === sid ? { ...s, specifications: [...s.specifications, newSpecification()] } : s
+      ),
     }));
   }, []);
 
-  const removeProperty = useCallback((gid: string, pid: string) => {
+  const removeSpecification = useCallback((sid: string, specId: string) => {
     setIds((prev) => ({
       ...prev,
-      requirements: prev.requirements.map((g) =>
-        g.id === gid ? { ...g, properties: g.properties.filter((p) => p.id !== pid) } : g
+      sections: (prev.sections || []).map((s) =>
+        s.id === sid ? { ...s, specifications: s.specifications.filter((sp) => sp.id !== specId) } : s
+      ),
+    }));
+  }, []);
+
+  const addProperty = useCallback((sid: string, specId: string) => {
+    setIds((prev) => ({
+      ...prev,
+      sections: (prev.sections || []).map((s) =>
+        s.id === sid
+          ? {
+              ...s,
+              specifications: s.specifications.map((sp) =>
+                sp.id === specId
+                  ? { ...sp, requirements: { ...sp.requirements, properties: [...sp.requirements.properties, newProperty()] } }
+                  : sp
+              ),
+            }
+          : s
+      ),
+    }));
+  }, []);
+
+  const removeProperty = useCallback((sid: string, specId: string, pid: string) => {
+    setIds((prev) => ({
+      ...prev,
+      sections: (prev.sections || []).map((s) =>
+        s.id === sid
+          ? {
+              ...s,
+              specifications: s.specifications.map((sp) =>
+                sp.id === specId
+                  ? {
+                      ...sp,
+                      requirements: {
+                        ...sp.requirements,
+                        properties: sp.requirements.properties.filter((p) => p.id !== pid),
+                      },
+                    }
+                  : sp
+              ),
+            }
+          : s
       ),
     }));
   }, []);
@@ -212,150 +266,546 @@ export default function Page() {
 
       <section className="mt-6 grid gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Requirement Groups</h2>
-          <Button onClick={addGroup}>Add Group</Button>
+          <h2 className="text-lg font-semibold">Sections</h2>
+          <Button onClick={addSection}>Add Section</Button>
         </div>
 
-        {ids.requirements.map((g) => (
-          <div key={g.id} className="ds-panel grid gap-2 p-4">
+        {(ids.sections || []).map((section) => (
+          <div key={section.id} className="ds-panel grid gap-4 p-4">
             <div className="flex items-center gap-2">
               <Input
                 className="flex-1"
-                placeholder="Group title"
-                value={g.title}
+                placeholder="Section title"
+                value={section.title}
                 onChange={(e) =>
                   setIds((prev) => ({
                     ...prev,
-                    requirements: prev.requirements.map((x) => (x.id === g.id ? { ...x, title: e.target.value } : x)),
+                    sections: (prev.sections || []).map((s) => (s.id === section.id ? { ...s, title: e.target.value } : s)),
                   }))
                 }
               />
-              <Button variant="ghost" onClick={() => removeGroup(g.id)}>
-                Remove
+              <Button variant="ghost" onClick={() => removeSection(section.id)}>
+                Remove Section
               </Button>
             </div>
             <Textarea
               rows={2}
-              placeholder="Description"
-              value={g.description || ""}
+              placeholder="Section description"
+              value={section.description || ""}
               onChange={(e) =>
                 setIds((prev) => ({
                   ...prev,
-                  requirements: prev.requirements.map((x) => (x.id === g.id ? { ...x, description: e.target.value } : x)),
+                  sections: (prev.sections || []).map((s) => (s.id === section.id ? { ...s, description: e.target.value } : s)),
                 }))
               }
             />
 
-            <div className="grid gap-3">
-              <div>
-                <label className="block text-sm text-gray-700">IFC Class</label>
-                <Input
-                  placeholder="IfcWall, IfcDoor, ..."
-                  value={g.applicability?.ifcClass || ""}
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Specifications</h3>
+              <Button variant="secondary" onClick={() => addSpecification(section.id)}>
+                Add Specification
+              </Button>
+            </div>
+
+            {section.specifications.map((spec) => (
+              <div key={spec.id} className="rounded border p-3">
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="flex-1"
+                    placeholder="Specification title"
+                    value={spec.title}
+                    onChange={(e) =>
+                      setIds((prev) => ({
+                        ...prev,
+                        sections: (prev.sections || []).map((s) =>
+                          s.id === section.id
+                            ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) =>
+                                  sp.id === spec.id ? { ...sp, title: e.target.value } : sp
+                                ),
+                              }
+                            : s
+                        ),
+                      }))
+                    }
+                  />
+                  <select
+                    value={spec.optionality}
+                    onChange={(e) =>
+                      setIds((prev) => ({
+                        ...prev,
+                        sections: (prev.sections || []).map((s) =>
+                          s.id === section.id
+                            ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) =>
+                                  sp.id === spec.id ? { ...sp, optionality: e.target.value as IDSOptionality } : sp
+                                ),
+                              }
+                            : s
+                        ),
+                      }))
+                    }
+                    className="ds-input"
+                  >
+                    <option value="required">Required</option>
+                    <option value="optional">Optional</option>
+                    <option value="prohibited">Prohibited</option>
+                  </select>
+                  <Button variant="ghost" onClick={() => removeSpecification(section.id, spec.id)}>
+                    Remove Spec
+                  </Button>
+                </div>
+
+                <Textarea
+                  rows={2}
+                  placeholder="Specification description"
+                  value={spec.description || ""}
                   onChange={(e) =>
                     setIds((prev) => ({
                       ...prev,
-                      requirements: prev.requirements.map((x) =>
-                        x.id === g.id ? { ...x, applicability: { ...(x.applicability || {}), ifcClass: e.target.value } } : x
+                      sections: (prev.sections || []).map((s) =>
+                        s.id === section.id
+                          ? {
+                              ...s,
+                              specifications: s.specifications.map((sp) =>
+                                sp.id === spec.id ? { ...sp, description: e.target.value } : sp
+                              ),
+                            }
+                          : s
                       ),
                     }))
                   }
                 />
-              </div>
-            </div>
 
-            <div className="mt-2 grid gap-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">Properties</h3>
-                <Button variant="secondary" onClick={() => addProperty(g.id)}>
-                  Add Property
-                </Button>
-              </div>
-              {g.properties.map((p) => (
-                <div key={p.id} className="grid grid-cols-1 gap-3 md:grid-cols-[3fr_2fr_2fr_4fr_auto]">
-                  <Input
-                    placeholder="Name"
-                    value={p.name}
-                    onChange={(e) =>
-                      setIds((prev) => ({
-                        ...prev,
-                        requirements: prev.requirements.map((x) =>
-                          x.id === g.id
-                            ? {
-                                ...x,
-                                properties: x.properties.map((pp) => (pp.id === p.id ? { ...pp, name: e.target.value } : pp)),
-                              }
-                            : x
-                        ),
-                      }))
-                    }
-                  />
-                  <Input
-                    placeholder="Datatype"
-                    value={p.datatype || ""}
-                    onChange={(e) =>
-                      setIds((prev) => ({
-                        ...prev,
-                        requirements: prev.requirements.map((x) =>
-                          x.id === g.id
-                            ? {
-                                ...x,
-                                properties: x.properties.map((pp) => (pp.id === p.id ? { ...pp, datatype: e.target.value } : pp)),
-                              }
-                            : x
-                        ),
-                      }))
-                    }
-                  />
-                  <Select
-                    value={p.operator || "present"}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      setIds((prev) => ({
-                        ...prev,
-                        requirements: prev.requirements.map((x) =>
-                          x.id === g.id
-                            ? {
-                                ...x,
-                                properties: x.properties.map((pp) =>
-                                  pp.id === p.id ? { ...pp, operator: e.target.value as IDSPropertyRequirement["operator"] } : pp
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <h4 className="font-medium">Applicability</h4>
+                    <label className="mt-2 block text-sm text-gray-700">IFC Class</label>
+                    <Input
+                      placeholder="IfcWall, IfcDoor, ..."
+                      value={spec.applicability?.ifcClass || ""}
+                      onChange={(e) =>
+                        setIds((prev) => ({
+                          ...prev,
+                          sections: (prev.sections || []).map((s) =>
+                            s.id === section.id
+                              ? {
+                                  ...s,
+                                  specifications: s.specifications.map((sp) =>
+                                    sp.id === spec.id
+                                      ? { ...sp, applicability: { ...(sp.applicability || {}), ifcClass: e.target.value } }
+                                      : sp
+                                  ),
+                                }
+                              : s
+                          ),
+                        }))
+                      }
+                    />
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700">Property constraints</span>
+                        <Button
+                          variant="secondary"
+                          onClick={() =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              applicability: {
+                                                ...(sp.applicability || {}),
+                                                properties: [...(sp.applicability?.properties || []), newProperty()],
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        >
+                          Add Property
+                        </Button>
+                      </div>
+                      {(spec.applicability?.properties || []).map((p) => (
+                        <div key={p.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_2fr_2fr_4fr_auto]">
+                          <Input
+                            placeholder="Property Set (e.g., Pset_WallCommon)"
+                            value={p.propertySet || ""}
+                            onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, propertySet: e.target.value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
                                 ),
+                              }))
+                            }
+                          />
+                          <Input
+                            placeholder="Property Name (Base Name)"
+                            value={p.name}
+                            onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, name: e.target.value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                          />
+                          <Input
+                            placeholder="Datatype (e.g., IFCLABEL)"
+                            value={p.datatype || ""}
+                            onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, datatype: e.target.value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                          />
+                          <Select
+                            value={p.operator || "present"}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id
+                                                      ? {
+                                                          ...pp,
+                                                          operator: e.target.value as IDSPropertyRequirement["operator"],
+                                                        }
+                                                      : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                          >
+                            <option value="present">present</option>
+                            <option value="equals">equals</option>
+                            <option value="contains">contains</option>
+                            <option value="in">in</option>
+                            <option value="matches">matches</option>
+                          </Select>
+                          <Input
+                            placeholder="Value"
+                            value={(p.value as string) || ""}
+                            onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, value: e.target.value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                          />
+                          <div className="flex items-center">
+                            <Button
+                              variant="ghost"
+                              onClick={() =>
+                                setIds((prev) => ({
+                                  ...prev,
+                                  sections: (prev.sections || []).map((s) =>
+                                    s.id === section.id
+                                      ? {
+                                          ...s,
+                                          specifications: s.specifications.map((sp) =>
+                                            sp.id === spec.id
+                                              ? {
+                                                  ...sp,
+                                                  applicability: {
+                                                    ...sp.applicability!,
+                                                    properties: (sp.applicability?.properties || []).filter((pp) => pp.id !== p.id),
+                                                  },
+                                                }
+                                              : sp
+                                          ),
+                                        }
+                                      : s
+                                  ),
+                                }))
                               }
-                            : x
-                        ),
-                      }))
-                    }
-                  >
-                    <option value="present">present</option>
-                    <option value="equals">equals</option>
-                    <option value="contains">contains</option>
-                    <option value="in">in</option>
-                    <option value="matches">matches</option>
-                  </Select>
-                  <Input
-                    placeholder="Value"
-                    value={(p.value as string) || ""}
-                    onChange={(e) =>
-                      setIds((prev) => ({
-                        ...prev,
-                        requirements: prev.requirements.map((x) =>
-                          x.id === g.id
-                            ? {
-                                ...x,
-                                properties: x.properties.map((pp) => (pp.id === p.id ? { ...pp, value: e.target.value } : pp)),
-                              }
-                            : x
-                        ),
-                      }))
-                    }
-                  />
-                  <div className="flex items-center">
-                    <Button variant="ghost" onClick={() => removeProperty(g.id, p.id)}>
-                      Remove
-                    </Button>
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium">Requirements</h4>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-sm text-gray-700">Properties</span>
+                      <Button variant="secondary" onClick={() => addProperty(section.id, spec.id)}>
+                        Add Property
+                      </Button>
+                    </div>
+                    {spec.requirements.properties.map((p) => (
+                      <div key={p.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_2fr_2fr_4fr_auto]">
+                        <Input
+                          placeholder="Property Set (e.g., Pset_WallCommon)"
+                          value={p.propertySet || ""}
+                          onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, propertySet: e.target.value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        />
+                        <Input
+                          placeholder="Name"
+                          value={p.name}
+                          onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, name: e.target.value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        />
+                        <Input
+                          placeholder="Datatype"
+                          value={p.datatype || ""}
+                          onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, datatype: e.target.value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        />
+                        <Select
+                          value={p.operator || "present"}
+                          onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: s.specifications
+                                                  .find((ssp) => ssp.id === spec.id)!
+                                                  .requirements.properties.map((pp) =>
+                                                    pp.id === p.id
+                                                      ? {
+                                                          ...pp,
+                                                          operator: e.target.value as IDSPropertyRequirement["operator"],
+                                                        }
+                                                      : pp
+                                                  ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        >
+                          <option value="present">present</option>
+                          <option value="equals">equals</option>
+                          <option value="contains">contains</option>
+                          <option value="in">in</option>
+                          <option value="matches">matches</option>
+                        </Select>
+                        <Input
+                          placeholder="Value"
+                          value={(p.value as string) || ""}
+                          onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, value: e.target.value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                        />
+                        <div className="flex items-center">
+                          <Button variant="ghost" onClick={() => removeProperty(section.id, spec.id, p.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         ))}
       </section>

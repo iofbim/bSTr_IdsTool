@@ -1,5 +1,11 @@
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
-import type { IDSRoot, IDSRequirementGroup, IDSPropertyRequirement } from "./types";
+import type {
+  IDSRoot,
+  IDSSpecification,
+  IDSPropertyRequirement,
+  IDSOptionality,
+  IDSSection,
+} from "./types";
 
 // Minimal IDS XML mapping (simplified for authoring/testing)
 // This does not fully implement the IDS XSD. It focuses on key fields we use
@@ -8,6 +14,7 @@ import type { IDSRoot, IDSRequirementGroup, IDSPropertyRequirement } from "./typ
 type IDSXMLProperty = {
   Property: {
     Name: string;
+    PropertySet?: string;
     Datatype?: string;
     Operator?: IDSPropertyRequirement["operator"];
     Value?: string;
@@ -16,19 +23,26 @@ type IDSXMLProperty = {
 
 type IDSXMLClassification = { Classification: { System: string; Code?: string; Name?: string } };
 
-type IDSXMLRequirementGroup = {
-  RequirementGroup: {
+type IDSXMLSpecification = {
+  Specification: {
     Title: string;
     Description?: string;
-    Applicability?: { IfcClass?: string; Classifications?: IDSXMLClassification[] };
-    Properties: IDSXMLProperty[];
+    Applicability?: {
+      "@_minOccurs"?: string | number;
+      "@_maxOccurs"?: string | number;
+      IfcClass?: string;
+      Classifications?: IDSXMLClassification[];
+    };
+    Requirements?: {
+      Properties?: IDSXMLProperty[];
+    };
   };
 };
 
 type IDSXML = {
   IDS: {
     Header: { Title: string; Description?: string; Author?: string; Date?: string; Version?: string };
-    Specification: IDSXMLRequirementGroup[];
+    Specifications: IDSXMLSpecification[];
   };
 };
 
@@ -46,36 +60,59 @@ const parser = new XMLParser({
 
 function toPropertyNode(prop: IDSPropertyRequirement): IDSXMLProperty {
   const node: IDSXMLProperty = { Property: { Name: prop.name } };
+  if (prop.propertySet) node.Property.PropertySet = prop.propertySet;
   if (prop.datatype) node.Property.Datatype = prop.datatype;
   if (prop.operator) node.Property.Operator = prop.operator;
   if (prop.value !== undefined) node.Property.Value = Array.isArray(prop.value) ? prop.value.join(", ") : String(prop.value);
   return node;
 }
 
-function toRequirementGroupNode(group: IDSRequirementGroup): IDSXMLRequirementGroup {
-  const props = group.properties?.map(toPropertyNode) ?? [];
-  const applicability = group.applicability
+function optionalityToOccurs(opt: IDSOptionality): { min: number; max: string | number } {
+  switch (opt) {
+    case "required":
+      return { min: 1, max: "unbounded" };
+    case "optional":
+      return { min: 0, max: "unbounded" };
+    case "prohibited":
+      return { min: 0, max: 0 };
+  }
+}
+
+function toSpecificationNode(spec: IDSSpecification): IDSXMLSpecification {
+  const props = spec.requirements?.properties?.map(toPropertyNode) ?? [];
+  const occurs = optionalityToOccurs(spec.optionality);
+
+  const applicability = spec.applicability
     ? {
         Applicability: {
-          IfcClass: group.applicability.ifcClass ?? undefined,
-          Classifications: group.applicability.classifications?.map((c) => ({
+          "@_minOccurs": occurs.min,
+          "@_maxOccurs": occurs.max,
+          IfcClass: spec.applicability.ifcClass ?? undefined,
+          Classifications: spec.applicability.classifications?.map((c) => ({
             Classification: { System: c.system, Code: c.code ?? undefined, Name: c.name ?? undefined },
           })),
+          Properties: spec.applicability.properties?.map(toPropertyNode),
         },
       }
-    : undefined;
+    : {
+        Applicability: {
+          "@_minOccurs": occurs.min,
+          "@_maxOccurs": occurs.max,
+        },
+      };
 
   return {
-    RequirementGroup: {
-      Title: group.title,
-      Description: group.description ?? undefined,
+    Specification: {
+      Title: spec.title,
+      Description: spec.description ?? undefined,
       ...(applicability ?? {}),
-      Properties: props,
+      Requirements: props.length ? { Properties: props } : undefined,
     },
   };
 }
 
 export function exportToIDSXML(idsData: IDSRoot): string {
+  const allSpecs: IDSSpecification[] = (idsData.sections || []).flatMap((s) => s.specifications || []);
   const xmlObject: IDSXML = {
     IDS: {
       Header: {
@@ -85,7 +122,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
         Date: idsData.header.date ?? undefined,
         Version: idsData.header.version ?? undefined,
       },
-      Specification: idsData.requirements.map(toRequirementGroupNode),
+      Specifications: allSpecs.map(toSpecificationNode),
     },
   };
   return builder.build(xmlObject);
@@ -97,22 +134,44 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
   const idsObj = pickObject(pickObject(parsed, "IDS") ?? pickObject(parsed, "ids") ?? parsed);
 
   const headerNode = pickObject(idsObj?.["Header"]);
-  const specsArr = asArray<Record<string, unknown>>(idsObj?.["Specification"]);
 
-  const requirements: IDSRequirementGroup[] = specsArr.map((spec, idx) => {
-    const rgObj = pickObject(spec?.["RequirementGroup"]) ?? spec;
-    const propsArr = asArray<Record<string, unknown>>(rgObj?.["Properties"]);
+  // Prefer new format: IDS.Specifications[].Specification
+  const specsArr = asArray<Record<string, unknown>>(idsObj?.["Specifications"]) as Record<string, unknown>[];
+  const specsSpecNodes = specsArr.flatMap((s) => asArray<Record<string, unknown>>(s?.["Specification"]))
+    .concat(asArray<Record<string, unknown>>(idsObj?.["Specification"])) // fallback if directly under IDS
+    .map((s) => pickObject(s?.["Specification"]) ?? s);
+
+  const specifications: IDSSpecification[] = specsSpecNodes.map((spec, idx) => {
+    const applicabilityNode = pickObject(spec?.["Applicability"]) || {};
+    const reqsNode = pickObject(spec?.["Requirements"]) || {};
+    const propsArr = asArray<Record<string, unknown>>(reqsNode?.["Properties"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["Property"]) || asArray<Record<string, unknown>>(x)
+    );
     const properties: IDSPropertyRequirement[] = propsArr
       .map((p) => pickObject(p?.["Property"]) ?? p)
       .map((p, pidx) => ({
         id: cryptoRandomId(`prop-${idx}-${pidx}`),
         name: String((p?.["Name"] as string) ?? "Unnamed"),
+        propertySet: p?.["PropertySet"] ? String(p?.["PropertySet"]) : undefined,
         datatype: p?.["Datatype"] ? String(p?.["Datatype"]) : undefined,
         operator: (p?.["Operator"] as IDSPropertyRequirement["operator"]) || undefined,
         value: p?.["Value"] as string | undefined,
       }));
 
-    const applicabilityNode = pickObject(rgObj?.["Applicability"]) || {};
+    const appPropsArr = asArray<Record<string, unknown>>(applicabilityNode?.["Properties"]).flatMap((x) =>
+      asArray<Record<string, unknown>>(pickObject(x)?.["Property"]) || asArray<Record<string, unknown>>(x)
+    );
+    const appProperties: IDSPropertyRequirement[] = appPropsArr
+      .map((p) => pickObject(p?.["Property"]) ?? p)
+      .map((p, pidx) => ({
+        id: cryptoRandomId(`aprop-${idx}-${pidx}`),
+        name: String((p?.["Name"] as string) ?? "Unnamed"),
+        propertySet: p?.["PropertySet"] ? String(p?.["PropertySet"]) : undefined,
+        datatype: p?.["Datatype"] ? String(p?.["Datatype"]) : undefined,
+        operator: (p?.["Operator"] as IDSPropertyRequirement["operator"]) || undefined,
+        value: p?.["Value"] as string | undefined,
+      }));
+
     const classificationsArr = asArray<Record<string, unknown>>(applicabilityNode?.["Classifications"]);
     const classifications = classificationsArr
       .map((c) => pickObject(c?.["Classification"]) ?? c)
@@ -123,17 +182,74 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
         name: c?.["Name"] ? String(c?.["Name"]) : undefined,
       }));
 
+    // Optionality from min/max occurs
+    const minOccurs = (applicabilityNode as any)?.["@_minOccurs"];
+    const maxOccurs = (applicabilityNode as any)?.["@_maxOccurs"];
+    let optionality: IDSOptionality = "required";
+    if (String(minOccurs ?? "1") === "0" && String(maxOccurs ?? "unbounded") === "unbounded") optionality = "optional";
+    if (String(minOccurs ?? "1") === "0" && String(maxOccurs ?? "unbounded") === "0") optionality = "prohibited";
+
     return {
-      id: cryptoRandomId(`req-${idx}`),
-      title: String((rgObj?.["Title"] as string) ?? "Untitled"),
-      description: rgObj?.["Description"] ? String(rgObj?.["Description"]) : undefined,
+      id: cryptoRandomId(`spec-${idx}`),
+      title: String((spec?.["Title"] as string) ?? "Untitled"),
+      description: spec?.["Description"] ? String(spec?.["Description"]) : undefined,
+      optionality,
       applicability: {
         ifcClass: applicabilityNode?.["IfcClass"] ? String(applicabilityNode?.["IfcClass"]) : undefined,
         classifications,
+        properties: appProperties,
       },
-      properties,
+      requirements: { properties },
     };
   });
+
+  // Backward compatibility with old minimal format: IDS.Specification[].RequirementGroup
+  if (!specifications.length) {
+    const oldSpecsArr = asArray<Record<string, unknown>>(idsObj?.["Specification"]);
+    const converted = oldSpecsArr.map((spec, idx) => {
+      const rgObj = pickObject(spec?.["RequirementGroup"]) ?? spec;
+      const propsArr = asArray<Record<string, unknown>>(rgObj?.["Properties"]);
+      const properties: IDSPropertyRequirement[] = propsArr
+        .map((p) => pickObject(p?.["Property"]) ?? p)
+        .map((p, pidx) => ({
+          id: cryptoRandomId(`prop-${idx}-${pidx}`),
+          name: String((p?.["Name"] as string) ?? "Unnamed"),
+          propertySet: p?.["PropertySet"] ? String(p?.["PropertySet"]) : undefined,
+          datatype: p?.["Datatype"] ? String(p?.["Datatype"]) : undefined,
+          operator: (p?.["Operator"] as IDSPropertyRequirement["operator"]) || undefined,
+          value: p?.["Value"] as string | undefined,
+        }));
+      const applicabilityNode = pickObject(rgObj?.["Applicability"]) || {};
+      const classificationsArr = asArray<Record<string, unknown>>(applicabilityNode?.["Classifications"]);
+      const classifications = classificationsArr
+        .map((c) => pickObject(c?.["Classification"]) ?? c)
+        .map((c, cidx) => ({
+          id: cryptoRandomId(`cls-${idx}-${cidx}`),
+          system: String((c?.["System"] as string) ?? ""),
+          code: c?.["Code"] ? String(c?.["Code"]) : undefined,
+          name: c?.["Name"] ? String(c?.["Name"]) : undefined,
+        }));
+      const specItem: IDSSpecification = {
+        id: cryptoRandomId(`spec-${idx}`),
+        title: String((rgObj?.["Title"] as string) ?? "Untitled"),
+        description: rgObj?.["Description"] ? String(rgObj?.["Description"]) : undefined,
+        optionality: "required",
+        applicability: {
+          ifcClass: applicabilityNode?.["IfcClass"] ? String(applicabilityNode?.["IfcClass"]) : undefined,
+          classifications,
+        },
+        requirements: { properties },
+      };
+      return specItem;
+    });
+    if (converted.length) specifications.push(...converted);
+  }
+
+  const section: IDSSection = {
+    id: cryptoRandomId("section"),
+    title: "Default Section",
+    specifications,
+  };
 
   return {
     header: {
@@ -143,7 +259,7 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
       date: headerNode?.["Date"] ? String(headerNode?.["Date"]) : undefined,
       version: headerNode?.["Version"] ? String(headerNode?.["Version"]) : undefined,
     },
-    requirements,
+    sections: [section],
   };
 }
 

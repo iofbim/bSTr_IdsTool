@@ -38,31 +38,23 @@ function runIfcTester(idsPath: string, ifcPath: string): Promise<{ ok: boolean; 
 import json, sys
 try:
     import ifcopenshell
-    from ifcopenshell import ids as ids_mod
+    # IDS functionality is provided by the separate 'ifctester' package
+    from ifctester import ids as ids_mod
+    from ifctester import reporter as ids_reporter
 except Exception as e:
-    print(json.dumps({"ok": False, "summary": "IfcOpenShell IDS not available", "details": str(e)}))
+    print(json.dumps({"ok": False, "summary": "IfcTester IDS not available", "details": str(e)}))
     sys.exit(0)
 
 ids_path = sys.argv[1]
 ifc_path = sys.argv[2]
 try:
-    spec = ids_mod.load(ids_path)
+    # Load IDS, validate, and emit IfcTester JSON report
+    spec = ids_mod.open(ids_path)
     model = ifcopenshell.open(ifc_path)
-    report = spec.validate(model)
-    # report is an iterator; collect minimal summary
-    results = []
-    ok_overall = True
-    for r in report:
-        item = {
-            "applicability": str(getattr(r, 'applicability', None)),
-            "requirement": str(getattr(r, 'requirement', None)),
-            "result": getattr(r, 'result', None),
-            "entities": getattr(r, 'entities', None),
-        }
-        ok_overall = ok_overall and bool(item["result"]) if item["result"] is not None else ok_overall
-        results.append(item)
-    out = {"ok": ok_overall, "summary": "Validation completed", "details": results}
-    print(json.dumps(out))
+    spec.validate(model)
+    rep = ids_reporter.Json(spec)
+    rep.report()
+    print(rep.to_string())
 except Exception as e:
     print(json.dumps({"ok": False, "summary": "Validation failed", "details": str(e)}))
 `;
@@ -78,11 +70,17 @@ except Exception as e:
     py.on("close", () => {
       try {
         const parsed = JSON.parse(out.trim() || "{}");
-        if (parsed && typeof parsed === "object" && ("ok" in parsed)) {
-          resolve(parsed);
-        } else {
-          resolve({ ok: false, summary: "IfcTester returned no result", details: err || out });
+        if (parsed && typeof parsed === "object") {
+          if ("ok" in parsed) {
+            resolve(parsed);
+            return;
+          }
+          if ("status" in parsed) {
+            resolve({ ok: Boolean(parsed.status), summary: "Validation completed", details: parsed });
+            return;
+          }
         }
+        resolve({ ok: false, summary: "IfcTester returned no result", details: err || out });
       } catch {
         resolve({ ok: false, summary: "Could not parse IfcTester output", details: err || out });
       }
@@ -92,7 +90,7 @@ except Exception as e:
         ok: false,
         summary: "Python/IfcTester not available",
         details:
-          "Ensure Python and IfcOpenShell with IDS module are installed: pip install ifcopenshell (or use IfcTester CLI)",
+          "Ensure Python plus ifcopenshell and ifctester are installed: pip install ifcopenshell ifctester",
       });
     });
   });
