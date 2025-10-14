@@ -1,9 +1,9 @@
-# bSTr IDS Tool
+﻿# bSTr IDS Tool
 
 - IDS editor with import/export (XML) and validation stub.
 - API routes:
-  - `GET /api/bsdd/search?term=...` – proxy to bSDD search.
-  - `POST /api/validate` – attempts validation via Python IfcOpenShell IDS.
+  - `GET /api/bsdd/search?term=...` â€“ proxy to bSDD search.
+  - `POST /api/validate` â€“ attempts validation via Python IfcOpenShell IDS.
 
 ## Running locally
 
@@ -13,8 +13,19 @@ npm run dev
 
 ## Samples
 
-- `public/samples/sample.ids.xml` – minimal IDS example.
+- `public/samples/sample.ids.xml` â€“ minimal IDS example.
 - IFC: bring your own `.ifc` file to test validation.
+
+## Dev References
+
+- bSDD (official upstream in repo root):
+  - `bSDD/Documentation/bSDD API.md` — REST endpoints and concepts
+  - `bSDD/Documentation/bSDD and GraphQL.md` — GraphQL endpoints and examples
+  - `bSDD/Documentation/bSDD OpenAPI.yaml` — OpenAPI for REST
+
+- IDS (official upstream in repo root):
+  - `IDS/Schema/ids.xsd` — IDS 1.0 XML Schema
+  - `IDS/Documentation/ImplementersDocumentation` — examples and test cases
 
 ## Design System
 
@@ -76,3 +87,23 @@ If the import fails, install/upgrade and retry:
 ```
 
 Finally, restart `npm run dev` so Next.js picks up the new env and packages.
+
+## bSDD GraphQL (optional)
+
+This app can query bSDD via REST (default) or GraphQL for class search/details.
+
+- Configure transport with an env var in .env.local:
+
+`
+BSDD_TRANSPORT=graphql
+# Optional: override endpoint or provide token for the secured prod endpoint
+# BSDD_GQL_URL=https://api.bsdd.buildingsmart.org/graphqls/
+# BSDD_GQL_TOKEN=...  # bearer token when using secured endpoint
+`
+
+- Interfaces live under src/lib/bsdd/*:
+  - providers/graphql.ts – GraphQL provider (search per dictionary, class detail)
+  - graphqlClient.ts – minimal fetch-based GraphQL client
+  - provider.ts – shared interface
+
+- Route pp/api/bsdd/search uses GraphQL when BSDD_TRANSPORT=graphql and dictionaries are provided; otherwise falls back to REST.

@@ -41,5 +41,7 @@ next-env.d.ts
 # local docs/notes
 endofday.md
 /IDS
+/bSDD
+/bsdd_gql.md
 /output
 /web/public/samples

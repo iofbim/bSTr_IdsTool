@@ -1,10 +1,13 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ds/Button";
 import { Input } from "@/components/ds/Input";
 import { Textarea } from "@/components/ds/Textarea";
 import { Select } from "@/components/ds/Select";
 import { Dialog } from "@/components/ds/Dialog";
+import { useBsddLibraries } from "@/hooks/useBsdd";
+import { useIfcCatalog } from "@/hooks/useIfcCatalog";
+import BsddClassPicker from "@/components/bsdd/BsddClassPicker";
 import { exportToIDSXML, parseIDSXML } from "@/lib/ids/xml";
 import type {
   IDSPropertyRequirement,
@@ -84,28 +87,30 @@ export default function Page() {
   const [xmlPreview, setXmlPreview] = useState("");
   const [validateOpen, setValidateOpen] = useState(false);
   const [validation, setValidation] = useState<string>("");
-  const [libraries, setLibraries] = useState<{ id: string; name: string; code?: string; version?: string }[]>([]);
   const [selectedLibs, setSelectedLibs] = useState<string[]>([]);
   const [includeTestDicts, setIncludeTestDicts] = useState<boolean>(false);
   const [dictQuery, setDictQuery] = useState<string>("");
+  const { libraries } = useBsddLibraries(includeTestDicts);
+  const { classes: ifcClasses, predefs: ifcPredefs } = useIfcCatalog();
+  const didInitLibs = useRef(false);
+  useEffect(() => {
+    if (didInitLibs.current) return;
+    const ifcId = "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
+    setSelectedLibs((prev) => (prev && prev.length > 0 ? prev : [ifcId]));
+    didInitLibs.current = true;
+  }, [libraries]);
+
+  // bSDD entity picker state
+  const [entityPickOpen, setEntityPickOpen] = useState(false);
+  const [entityInitialQuery, setEntityInitialQuery] = useState("");
+  const [entityTarget, setEntityTarget] = useState<
+    | { scope: "applicability" | "requirements"; sectionId: string; specId: string; entityId: string }
+    | null
+  >(null);
 
   const xml = useMemo(() => exportToIDSXML(ids), [ids]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/bsdd/libraries?includeTest=${includeTestDicts ? "1" : "0"}`);
-        const data = await res.json();
-        const libs = (data.libraries || []) as { id: string; name: string }[];
-        setLibraries(libs);
-        // Preselect pinned IFC4.3 only
-        const ifc43 = libs.find((l) => l.id === "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3");
-        const ifcId = ifc43 ? ifc43.id : "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
-        setSelectedLibs((prev) => Array.from(new Set([...(prev || []), ifcId])));
-      } catch {}
-    };
-    load();
-  }, [includeTestDicts]);
+  // bSDD class search handled by BsddClassPicker component
 
   const addSection = useCallback(() => {
     setIds((prev) => ({ ...prev, sections: [...(prev.sections || []), newSection()] }));
@@ -206,6 +211,185 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }, [xml, ids.header.title]);
 
+  // Lookup URI when class is chosen/confirmed (on blur), using class-only search.
+  const applyEntityClassUriLookup = useCallback(
+    async (
+      scope: "applicability" | "requirements",
+      sectionId: string,
+      specId: string,
+      entityId: string,
+      ifcClass: string | undefined
+    ) => {
+      const cls = (ifcClass || "").trim();
+      if (!cls) return;
+      try {
+        // Ensure IFC4.3 is selected in the bSDD libraries UI
+        const IFC43 = "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
+        setSelectedLibs((prev) => (prev && prev.includes(IFC43) ? prev : [ ...(prev || []), IFC43 ]));
+
+        const term = cls.toUpperCase();
+        const params = new URLSearchParams({ term, limit: "1" });
+        // Always search in IFC 4.3 when class picked from our dropdown
+        params.append("dict", "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3");
+        const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
+        const uri = hit?.uri ? String(hit.uri) : undefined;
+        if (!uri) return;
+        setIds((prev) => ({
+          ...prev,
+          sections: (prev.sections || []).map((s) =>
+            s.id === sectionId
+              ? {
+                  ...s,
+                  specifications: s.specifications.map((sp) =>
+                    sp.id === specId
+                      ? scope === "applicability"
+                        ? {
+                            ...sp,
+                            applicability: {
+                              ...sp.applicability!,
+                              entities: (sp.applicability?.entities || []).map((ee) =>
+                                ee.id === entityId ? { ...ee, uri } : ee
+                              ),
+                            },
+                          }
+                        : {
+                            ...sp,
+                            requirements: {
+                              ...sp.requirements,
+                              entities: (sp.requirements.entities || []).map((ee) =>
+                                ee.id === entityId ? { ...ee, uri } : ee
+                              ),
+                            },
+                          }
+                      : sp
+                  ),
+                }
+              : s
+          ),
+        }));
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
+
+  // When user selects a predefined type for an entity, optionally look up
+  // the combined IFC class + predefined type variant in bSDD and assign the
+  // matched class URI to the entity's uri field.
+  const applyEntityPredefinedType = useCallback(
+    async (
+      scope: "applicability" | "requirements",
+      sectionId: string,
+      specId: string,
+      entityId: string,
+      ifcClass: string | undefined,
+      predef: string | undefined
+    ) => {
+      // First update just the predefinedType value locally
+      setIds((prev) => ({
+        ...prev,
+        sections: (prev.sections || []).map((s) =>
+          s.id === sectionId
+            ? {
+                ...s,
+                specifications: s.specifications.map((sp) =>
+                  sp.id === specId
+                    ? scope === "applicability"
+                      ? {
+                          ...sp,
+                          applicability: {
+                            ...sp.applicability!,
+                            entities: (sp.applicability?.entities || []).map((ee) =>
+                              ee.id === entityId ? { ...ee, predefinedType: predef || "" } : ee
+                            ),
+                          },
+                        }
+                      : {
+                          ...sp,
+                          requirements: {
+                            ...sp.requirements,
+                            entities: (sp.requirements.entities || []).map((ee) =>
+                              ee.id === entityId ? { ...ee, predefinedType: predef || "" } : ee
+                            ),
+                          },
+                        }
+                    : sp
+                ),
+              }
+            : s
+        ),
+      }));
+
+      // If we have both class and predef, try bSDD lookup for a specific URI
+      const cls = (ifcClass || "").trim();
+      const pt = (predef || "").trim();
+      if (!cls || !pt) return;
+
+      try {
+        // 1) Try combined search term like IFCDOORBOOM_BARRIER (class upper + predef upper)
+        const trySearch = async (term: string) => {
+          const params = new URLSearchParams({ term, limit: "1" });
+          for (const d of selectedLibs) params.append("dict", d);
+          const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+          if (!res.ok) return undefined as string | undefined;
+          const data = await res.json();
+          const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
+          return hit?.uri ? String(hit.uri) : undefined;
+        };
+
+        let uri = await trySearch(`${cls.toUpperCase()}${pt.toUpperCase()}`);
+
+        // 2) Fallback: search by class name only (e.g., IFCDOOR)
+        if (!uri) {
+          uri = await trySearch(cls.toUpperCase());
+        }
+
+        if (!uri) return;
+        // Apply the URI to the entity
+        setIds((prev) => ({
+          ...prev,
+          sections: (prev.sections || []).map((s) =>
+            s.id === sectionId
+              ? {
+                  ...s,
+                  specifications: s.specifications.map((sp) =>
+                    sp.id === specId
+                      ? scope === "applicability"
+                        ? {
+                            ...sp,
+                            applicability: {
+                              ...sp.applicability!,
+                              entities: (sp.applicability?.entities || []).map((ee) =>
+                                ee.id === entityId ? { ...ee, uri } : ee
+                              ),
+                            },
+                          }
+                        : {
+                            ...sp,
+                            requirements: {
+                              ...sp.requirements,
+                              entities: (sp.requirements.entities || []).map((ee) =>
+                                ee.id === entityId ? { ...ee, uri } : ee
+                              ),
+                            },
+                          }
+                      : sp
+                  ),
+                }
+              : s
+          ),
+        }));
+      } catch {
+        // ignore lookup errors, user can edit URI manually
+      }
+    },
+    [selectedLibs]
+  );
+
   const onValidate = useCallback(async (ifcFile: File) => {
     const form = new FormData();
     form.append("idsXml", new Blob([xml], { type: "application/xml" }), "spec.ids");
@@ -260,7 +444,7 @@ export default function Page() {
           <div className="ds-panel p-3">
             <h2 className="text-lg font-semibold">Import / Export / Validate</h2>
             <div className="mt-1 flex flex-wrap items-center gap-3">
-              <input className="max-w-[12rem]" type="file" accept=".ids,.xml" onChange={onImport} />
+              <input className="max-w-[12rem]" type="file" accept=".ids,.xml" onChange={onImport} aria-label="Import IDS XML" title="Import IDS XML" />
               <Button onClick={onExport}>Preview XML</Button>
               <Button variant="secondary" onClick={downloadXML}>Download XML</Button>
               <span className="text-sm text-gray-600">IFC:</span>
@@ -269,6 +453,8 @@ export default function Page() {
                 type="file"
                 accept=".ifc,.ifczip"
                 onChange={(e) => e.target.files && e.target.files[0] && onValidate(e.target.files[0])}
+                aria-label="Upload IFC file for validation"
+                title="Upload IFC file for validation"
               />
             </div>
           </div>
@@ -277,7 +463,7 @@ export default function Page() {
         {/* Right column: bSDD Libraries panel, fixed height */}
         <div className="ds-panel p-4 h-[320px] overflow-hidden flex flex-col">
           <h2 className="text-lg font-semibold">bSDD Libraries</h2>
-          <p className="mt-1 text-gray-600">Select which bSDD libraries to use. IFC is always enabled.</p>
+          <p className="mt-1 text-gray-600">Select which bSDD libraries to use.</p>
           <div className="mt-2 flex items-center gap-3">
             <Input
               placeholder="Search dictionaries"
@@ -306,13 +492,12 @@ export default function Page() {
               )
               .map((lib) => {
                 const isIfc = lib.id === "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
-                const checked = isIfc || selectedLibs.includes(lib.id);
+                const checked = selectedLibs.includes(lib.id);
                 return (
                   <label key={lib.id} className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={isIfc}
                       onChange={(e) => {
                         setSelectedLibs((prev) => {
                           const set = new Set(prev);
@@ -412,7 +597,7 @@ export default function Page() {
                       }))
                     }
                   />
-                  <select
+                  <select title="Specification optionality" aria-label="Specification optionality"
                     value={spec.optionality}
                     onChange={(e) =>
                       setIds((prev) => ({
@@ -477,7 +662,7 @@ export default function Page() {
                       }))
                     }
                   />
-                  <select
+                  <select title="IFC version" aria-label="IFC version"
                     value={spec.ifcVersion || "IFC4"}
                     onChange={(e) =>
                       setIds((prev) => ({
@@ -640,31 +825,78 @@ export default function Page() {
                       </div>
                       {(spec.applicability?.entities || []).map((e) => (
                         <div key={e.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
-                          <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr] gap-2">
-                            <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
-                              setIds((prev) => ({
-                                ...prev,
-                                sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                  ...s,
-                                  specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
-                                } : s),
-                              }))
-                            } />
-                            <Input placeholder="Predefined Type (optional)" value={e.predefinedType || ""} onChange={(ev) =>
-                              setIds((prev) => ({
-                                ...prev,
-                                sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                  ...s,
-                                  specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, predefinedType: (ev.target as HTMLInputElement).value } : ee) } } : sp),
-                                } : s),
-                              }))
-                            } />
+                      <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr] gap-2">
+                          <div className="relative">
+                              <Input list={`ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
+                                setIds((prev) => ({
+                                  ...prev,
+                                  sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                    ...s,
+                                    specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
+                                  } : s),
+                                }))
+                             } onBlur={(ev) => applyEntityClassUriLookup("applicability", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
+                              <datalist id={`ifc-classes-${e.id}`}>
+                                {(ifcClasses || []).map((c) => (
+                                  <option key={c} value={c} />
+                                ))}
+                              </datalist>
+                              <div className="mt-1">
+                                <Button
+                                  className="text-xs bg-gray-100"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setEntityTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, entityId: e.id });
+                                    setEntityInitialQuery(e.ifcClass || "");
+                                    setEntityPickOpen(true);
+                                  }}
+                                >
+                                  Pick from bSDD
+                                </Button>
+                              </div>
+                            </div>
+                            {(ifcPredefs && ifcPredefs[(e.ifcClass || "").toUpperCase()] && ifcPredefs[(e.ifcClass || "").toUpperCase()].length) ? (
+                              <select title="Predefined type" aria-label="Predefined type"
+                                className="ds-input"
+                                value={e.predefinedType || ""}
+                                onChange={(ev) =>
+                                  applyEntityPredefinedType(
+                                    "applicability",
+                                    section.id,
+                                    spec.id,
+                                    e.id,
+                                    e.ifcClass,
+                                    (ev.target as HTMLSelectElement).value
+                                  )
+                                }
+                              >
+                                <option value="">-- select predefined type --</option>
+                                {ifcPredefs[(e.ifcClass || "").toUpperCase()].map((pt) => (
+                                  <option key={pt} value={pt}>{pt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                placeholder="Predefined Type (optional)"
+                                value={e.predefinedType || ""}
+                                onChange={(ev) =>
+                                  applyEntityPredefinedType(
+                                    "applicability",
+                                    section.id,
+                                    spec.id,
+                                    e.id,
+                                    e.ifcClass,
+                                    (ev.target as HTMLInputElement).value
+                                  )
+                                }
+                              />
+                            )}
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
-                            <Input placeholder="URI (optional)" value={(e as any).uri || ''} onChange={(ev) => setIds((prev) => ({
-                              ...prev,
-                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, uri: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
-                            }))} />
+                          <Input placeholder="URI (optional)" value={(e as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, uri: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
+                          }))} />
                             <Input placeholder="Instructions (optional)" value={(e as any).instructions || ''} onChange={(ev) => setIds((prev) => ({
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, instructions: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
@@ -719,7 +951,7 @@ export default function Page() {
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, datatype: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                           }))} />
-                          <select className="ds-input" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                          <select title="Attribute operator" aria-label="Attribute operator" className="ds-input" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, operator: ev.target.value as any } : aa) } } : sp) } : s),
                           }))}>
@@ -753,7 +985,7 @@ export default function Page() {
                       {(spec.applicability?.materials || []).map((m) => (
                         <div key={m.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                           <div className="grid grid-cols-1 md:grid-cols-[2fr_4fr] gap-2">
-                          <select className="ds-input" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                          <select title="Material operator" aria-label="Material operator" className="ds-input" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).map((mm) => mm.id === m.id ? { ...mm, operator: ev.target.value as any } : mm) } } : sp) } : s),
                           }))}>
@@ -786,7 +1018,7 @@ export default function Page() {
                       {(spec.applicability?.partOf || []).map((po) => (
                         <div key={po.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                           <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr_3fr] gap-2">
-                          <select className="ds-input" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
+                          <select title="Part-of relation" aria-label="Part-of relation" className="ds-input" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLSelectElement).value as any } : pp) } } : sp) } : s),
                           }))}>
@@ -795,7 +1027,7 @@ export default function Page() {
                               <option key={r} value={r}>{r}</option>
                             ))}
                           </select>
-                          <Input placeholder="Child IFC Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
+                          <Input placeholder="Child Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), ifcClass: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
                           }))} />
@@ -1136,7 +1368,7 @@ export default function Page() {
                     {(spec.requirements.entities || []).map((e) => (
                       <div key={e.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr] gap-2">
-                          <select className="ds-input" value={e.optionality || "required"} onChange={(ev) =>
+                          <select title="Entity optionality" aria-label="Entity optionality" className="ds-input" value={e.optionality || "required"} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -1155,30 +1387,74 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
-                          <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
-                          setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                              ...s,
-                              specifications: s.specifications.map((sp) => sp.id === spec.id ? {
-                                ...sp,
-                                requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) },
-                              } : sp),
-                            } : s),
-                          }))
-                          } />
-                          <Input placeholder="Predefined Type" value={e.predefinedType || ""} onChange={(ev) =>
-                          setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                              ...s,
-                              specifications: s.specifications.map((sp) => sp.id === spec.id ? {
-                                ...sp,
-                                requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, predefinedType: (ev.target as HTMLInputElement).value } : ee) },
-                              } : sp),
-                            } : s),
-                          }))
-                          } />
+                          <div>
+                            <Input list={`req-ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) => sp.id === spec.id ? {
+                                  ...sp,
+                                  requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) },
+                                } : sp),
+                              } : s),
+                            }))
+                          } onBlur={(ev) => applyEntityClassUriLookup("requirements", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
+                            <datalist id={`req-ifc-classes-${e.id}`}>
+                              {(ifcClasses || []).map((c) => (
+                                <option key={c} value={c} />
+                              ))}
+                            </datalist>
+                            <div className="mt-1">
+                              <Button
+                                className="text-xs bg-gray-100"
+                                variant="secondary"
+                                onClick={() => {
+                                  setEntityTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, entityId: e.id });
+                                  setEntityInitialQuery(e.ifcClass || "");
+                                  setEntityPickOpen(true);
+                                }}
+                              >
+                                Pick from bSDD
+                              </Button>
+                            </div>
+                          </div>
+                          {(ifcPredefs && ifcPredefs[(e.ifcClass || "").toUpperCase()] && ifcPredefs[(e.ifcClass || "").toUpperCase()].length) ? (
+                            <select title="Predefined type" aria-label="Predefined type"
+                              className="ds-input"
+                              value={e.predefinedType || ""}
+                              onChange={(ev) =>
+                                applyEntityPredefinedType(
+                                  "requirements",
+                                  section.id,
+                                  spec.id,
+                                  e.id,
+                                  e.ifcClass,
+                                  (ev.target as HTMLSelectElement).value
+                                )
+                              }
+                            >
+                              <option value="">-- select predefined type --</option>
+                              {ifcPredefs[(e.ifcClass || "").toUpperCase()].map((pt) => (
+                                <option key={pt} value={pt}>{pt}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input
+                              placeholder="Predefined Type"
+                              value={e.predefinedType || ""}
+                              onChange={(ev) =>
+                                applyEntityPredefinedType(
+                                  "requirements",
+                                  section.id,
+                                  spec.id,
+                                  e.id,
+                                  e.ifcClass,
+                                  (ev.target as HTMLInputElement).value
+                                )
+                              }
+                            />
+                          )}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
                           <Input placeholder="URI (optional)" value={(e as any).uri || ''} onChange={(ev) => setIds((prev) => ({
@@ -1207,7 +1483,7 @@ export default function Page() {
                     {(spec.requirements.classifications || []).map((c) => (
                       <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr_2fr_2fr_auto] gap-2">
-                          <select className="ds-chip" value={c.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                          <select title="Classification optionality" aria-label="Classification optionality" className="ds-chip" value={c.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, optionality: ev.target.value as IDSOptionality } : cc) } } : sp) } : s),
                           }))}>
@@ -1251,7 +1527,7 @@ export default function Page() {
                             } : s),
                           }))
                         } />
-                        <select className="ds-chip" value={c.operator || 'equals'} onChange={(ev) => setIds((prev) => ({
+                         <select title="Classification operator" aria-label="Classification operator" className="ds-chip" value={c.operator || 'equals'} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, operator: (ev.target as HTMLSelectElement).value as any } : cc) } } : sp) } : s),
                         }))}>
@@ -1291,7 +1567,7 @@ export default function Page() {
                     {(spec.requirements.attributes || []).map((a) => (
                       <div key={a.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_2fr_2fr_3fr] gap-2">
-                        <select className="ds-chip" value={a.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                         <select title="Attribute optionality" aria-label="Attribute optionality" className="ds-chip" value={a.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, optionality: ev.target.value as IDSOptionality } : aa) } } : sp) } : s),
                         }))}>
@@ -1307,7 +1583,7 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, datatype: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                         }))} />
-                        <select className="ds-chip" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                         <select title="Attribute operator" aria-label="Attribute operator" className="ds-chip" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, operator: ev.target.value as any } : aa) } } : sp) } : s),
                         }))}>
@@ -1342,7 +1618,7 @@ export default function Page() {
                     {(spec.requirements.materials || []).map((m) => (
                       <div key={m.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_3fr] gap-2">
-                        <select className="ds-chip" value={m.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                         <select title="Material optionality" aria-label="Material optionality" className="ds-chip" value={m.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, optionality: ev.target.value as IDSOptionality } : mm) } } : sp) } : s),
                         }))}>
@@ -1350,7 +1626,7 @@ export default function Page() {
                           <option value="optional">Optional</option>
                           <option value="prohibited">Prohibited</option>
                         </select>
-                        <select className="ds-chip" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                         <select title="Material operator" aria-label="Material operator" className="ds-chip" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, operator: ev.target.value as any } : mm) } } : sp) } : s),
                         }))}>
@@ -1384,7 +1660,7 @@ export default function Page() {
                     {(spec.requirements.partOf || []).map((po) => (
                       <div key={po.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr_3fr] gap-2">
-                        <select className="ds-chip" value={po.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                         <select title="Part-of optionality" aria-label="Part-of optionality" className="ds-chip" value={po.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, optionality: ev.target.value as IDSOptionality } : pp) } } : sp) } : s),
                         }))}>
@@ -1392,7 +1668,7 @@ export default function Page() {
                           <option value="optional">Optional</option>
                           <option value="prohibited">Prohibited</option>
                         </select>
-                        <select className="ds-chip w-40" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
+                         <select title="Part-of relation" aria-label="Part-of relation" className="ds-chip w-40" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLSelectElement).value as any } : pp) } } : sp) } : s),
                         }))}>
@@ -1401,7 +1677,7 @@ export default function Page() {
                             <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
-                        <Input placeholder="Child IFC Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
+                        <Input placeholder="Child Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), ifcClass: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
                         }))} />
@@ -1429,7 +1705,7 @@ export default function Page() {
                     {spec.requirements.properties.map((p) => (
                       <div key={p.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr_2fr_2fr_2fr_4fr] gap-2">
-                        <select className="ds-chip" value={p.optionality || "required"} onChange={(e) =>
+                         <select title="Property optionality" aria-label="Property optionality" className="ds-chip" value={p.optionality || "required"} onChange={(e) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -1532,7 +1808,7 @@ export default function Page() {
                             }))
                           }
                         />
-                        <select className="ds-chip"
+                         <select title="Property operator" aria-label="Property operator" className="ds-chip"
                           value={p.operator || "present"}
                           onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                             setIds((prev) => ({
@@ -1675,6 +1951,50 @@ export default function Page() {
       <Dialog open={exportOpen} onClose={() => setExportOpen(false)} title="IDS XML Preview" footer={<Button onClick={() => setExportOpen(false)}>Close</Button>}>
         <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-all text-xs">{xmlPreview}</pre>
       </Dialog>
+
+      {/* bSDD Entity Picker */}
+      <BsddClassPicker
+        open={entityPickOpen}
+        onClose={() => setEntityPickOpen(false)}
+        dicts={selectedLibs}
+        initialQuery={entityInitialQuery}
+        onPick={(r) => {
+          if (!entityTarget) return;
+          const apply = (updater: (sp: IDSSpecification) => IDSSpecification) => {
+            setIds((prev) => ({
+              ...prev,
+              sections: (prev.sections || []).map((s) =>
+                s.id === entityTarget.sectionId
+                  ? {
+                      ...s,
+                      specifications: s.specifications.map((sp) =>
+                        sp.id === entityTarget.specId ? updater(sp) : sp
+                      ),
+                    }
+                  : s
+              ),
+            }));
+          };
+          const assign = (eList?: IDSEntityFacet[]) =>
+            (eList || []).map((ee) =>
+              ee.id === entityTarget.entityId
+                ? { ...ee, ifcClass: r.referenceCode || r.name, uri: r.uri, predefinedType: "" }
+                : ee
+            );
+          if (entityTarget.scope === "applicability") {
+            apply((sp) => ({
+              ...sp,
+              applicability: { ...sp.applicability!, entities: assign(sp.applicability?.entities) },
+            }));
+          } else {
+            apply((sp) => ({
+              ...sp,
+              requirements: { ...sp.requirements, entities: assign(sp.requirements.entities) },
+            }));
+          }
+          setEntityPickOpen(false);
+        }}
+      />
 
       <Dialog open={validateOpen} onClose={() => setValidateOpen(false)} title="Validation Result" footer={<Button onClick={() => setValidateOpen(false)}>Close</Button>}>
         <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-all text-xs">{validation}</pre>

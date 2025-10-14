@@ -1,3 +1,6 @@
+// References
+// - IDS/Schema/ids.xsd (official IDS 1.0 XSD)
+// - IDS/Documentation/ImplementersDocumentation (test cases and guidance)
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import type {
   IDSRoot,

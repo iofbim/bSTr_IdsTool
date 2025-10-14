@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { GraphqlBsddProvider } from "@/lib/bsdd/providers/graphql";
+import { BSDD_TRANSPORT } from "@/lib/bsdd/provider";
 
 // bSDD search proxy (per SwaggerHub v1): /api/Class/Search/v1
 // Accepts query: term, limit, dict (repeatable)
@@ -12,11 +14,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // If configured for GraphQL and dictionaries are provided, use the GraphQL provider
+    const dicts = searchParams.getAll("dict").filter(Boolean);
+    if (BSDD_TRANSPORT === "graphql" && dicts.length) {
+      const provider = new GraphqlBsddProvider();
+      const results = await provider.searchClasses(term, dicts, limit);
+      return Response.json({ results, total: results.length });
+    }
+
     const url = new URL("https://api.bsdd.buildingsmart.org/api/Class/Search/v1");
     url.searchParams.set("SearchText", term);
     url.searchParams.set("Limit", String(limit));
     // Optional dictionary filters
-    const dicts = searchParams.getAll("dict");
     for (const d of dicts) {
       if (d) url.searchParams.append("DictionaryUris", d);
     }
