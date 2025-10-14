@@ -40,3 +40,6 @@ next-env.d.ts
 
 # local docs/notes
 endofday.md
+/IDS
+/output
+/web/public/samples

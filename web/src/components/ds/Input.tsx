@@ -1,12 +1,16 @@
 "use client";
 import * as React from "react";
 
-type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  size?: "sm" | "md" | "lg";
+};
 
-export function Input({ className = "", ...props }: InputProps) {
+export function Input({ size = "sm", className = "", ...props }: InputProps) {
   const cls = [
-    "block w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm",
-    "focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400",
+    "ds-input",
+    size === "sm" && "ds-input--sm",
+    size === "md" && "ds-input--md",
+    size === "lg" && "ds-input--lg",
     className,
   ]
     .filter(Boolean)

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
-// bSDD search proxy to avoid CORS issues. Uses async/await and returns a trimmed response.
+// bSDD search proxy (per SwaggerHub v1): /api/Class/Search/v1
+// Accepts query: term, limit, dict (repeatable)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const term = searchParams.get("term") || "";
@@ -11,22 +12,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Public bSDD v3 API search endpoint; adjust parameters as needed
-    const url = new URL("https://api.bsdd.buildingsmart.org/api/Definitions/Search");
-    url.searchParams.set("Query", term);
-    url.searchParams.set("PageSize", String(limit));
+    const url = new URL("https://api.bsdd.buildingsmart.org/api/Class/Search/v1");
+    url.searchParams.set("SearchText", term);
+    url.searchParams.set("Limit", String(limit));
+    // Optional dictionary filters
+    const dicts = searchParams.getAll("dict");
+    for (const d of dicts) {
+      if (d) url.searchParams.append("DictionaryUris", d);
+    }
 
     const r = await fetch(url.toString(), { next: { revalidate: 60 } });
     if (!r.ok) {
       return Response.json({ error: "bSDD upstream error", status: r.status }, { status: 502 });
     }
-    const data = (await r.json()) as { results?: unknown; Results?: unknown };
-    const res = Array.isArray(data.results)
-      ? data.results
-      : Array.isArray(data.Results)
-      ? (data.Results as unknown[])
-      : [];
-    return Response.json({ results: res });
+    const data = (await r.json()) as { classes?: unknown[]; totalCount?: number };
+    const res = Array.isArray((data as any).classes) ? (data as any).classes : [];
+    return Response.json({ results: res, total: data.totalCount ?? res.length });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });

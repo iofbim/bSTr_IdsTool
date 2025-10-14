@@ -17,6 +17,7 @@ import type {
   IDSEntityFacet,
   IDSMaterialRequirement,
 } from "@/lib/ids/types";
+import { IDS_IFC_VERSIONS, IDS_RELATIONS } from "@/lib/ids/types";
 
 function newProperty(): IDSPropertyRequirement {
   return {
@@ -53,11 +54,14 @@ function newMaterial(): IDSMaterialRequirement {
 function newSpecification(): IDSSpecification {
   return {
     id: `spec-${Math.random().toString(36).slice(2)}`,
+    name: "",
     title: "New Specification",
     description: "",
+    ifcVersion: "IFC4",
     optionality: "required",
     applicability: { ifcClass: "", entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [] },
-    requirements: { entities: [], classifications: [], attributes: [], properties: [newProperty()], materials: [], partOf: [], cardinality: "required" },
+    // Start with no pre-filled requirement facets
+    requirements: { entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [], cardinality: "required" },
   };
 }
 
@@ -82,23 +86,26 @@ export default function Page() {
   const [validation, setValidation] = useState<string>("");
   const [libraries, setLibraries] = useState<{ id: string; name: string; code?: string; version?: string }[]>([]);
   const [selectedLibs, setSelectedLibs] = useState<string[]>([]);
+  const [includeTestDicts, setIncludeTestDicts] = useState<boolean>(false);
+  const [dictQuery, setDictQuery] = useState<string>("");
 
   const xml = useMemo(() => exportToIDSXML(ids), [ids]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch("/api/bsdd/libraries");
+        const res = await fetch(`/api/bsdd/libraries?includeTest=${includeTestDicts ? "1" : "0"}`);
         const data = await res.json();
         const libs = (data.libraries || []) as { id: string; name: string }[];
         setLibraries(libs);
-        // Preselect IFC as default and always-on
-        const defaultIFC = libs.filter((l) => /\bifc\b/i.test(l.name) || /\bifc\b/i.test(l.id)).map((l) => l.id);
-        setSelectedLibs((prev) => Array.from(new Set([...(prev || []), ...defaultIFC, "ifc"])));
+        // Preselect pinned IFC4.3 only
+        const ifc43 = libs.find((l) => l.id === "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3");
+        const ifcId = ifc43 ? ifc43.id : "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
+        setSelectedLibs((prev) => Array.from(new Set([...(prev || []), ifcId])));
       } catch {}
     };
     load();
-  }, []);
+  }, [includeTestDicts]);
 
   const addSection = useCallback(() => {
     setIds((prev) => ({ ...prev, sections: [...(prev.sections || []), newSection()] }));
@@ -171,8 +178,17 @@ export default function Page() {
   const onImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const imported = await parseIDSXML(file);
-    setIds(imported);
+    try {
+      const imported = await parseIDSXML(file);
+      setIds(imported);
+      const specCount = (imported.sections?.[0]?.specifications?.length ?? 0);
+      if (!specCount) {
+        // Provide a tiny bit of feedback if the file parsed but produced no specs
+        alert("Imported file parsed, but no specifications were found.");
+      }
+    } catch (err) {
+      alert(`Failed to import IDS: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, []);
 
   const onExport = useCallback(() => {
@@ -208,88 +224,117 @@ export default function Page() {
       <p className="mt-2 text-gray-600">Create, import, export, and validate IDS specifications.</p>
 
       <section className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div className="ds-panel p-4">
-          <h2 className="text-lg font-semibold">Header</h2>
-          <label className="mt-2 block text-sm text-gray-700">Title</label>
+        {/* Left column: Header + Import/Export/Validate stacked, fixed total height */}
+        <div className="grid gap-3 h-[320px] overflow-hidden">
+          <div className="ds-panel p-3">
+          {/* <h2 className="text-lg font-semibold">Header</h2> */}
+          {/* <label className="mt-2 block text-sm text-gray-700">Title</label> */}
           <Input
             value={ids.header.title}
             onChange={(e) => setIds({ ...ids, header: { ...ids.header, title: e.target.value } })}
           />
-          <label className="mt-2 block text-sm text-gray-700">Description</label>
+          <label className="mt-1 block text-sm text-gray-700">Description</label>
           <Textarea
-            rows={3}
+            rows={1}
             value={ids.header.description || ""}
             onChange={(e) => setIds({ ...ids, header: { ...ids.header, description: e.target.value } })}
           />
-          <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div>
-              <label className="block text-sm text-gray-700">Author</label>
-              <Input
-                value={ids.header.author || ""}
-                onChange={(e) => setIds({ ...ids, header: { ...ids.header, author: e.target.value } })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">Date</label>
-              <Input
-                type="date"
-                value={ids.header.date || ""}
-                onChange={(e) => setIds({ ...ids, header: { ...ids.header, date: e.target.value } })}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">Version</label>
-              <Input
-                value={ids.header.version || ""}
-                onChange={(e) => setIds({ ...ids, header: { ...ids.header, version: e.target.value } })}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="ds-panel p-4">
-          <h2 className="text-lg font-semibold">Import / Export / Validate</h2>
-          <div className="mt-2 flex items-center gap-3">
-            <input type="file" accept=".ids,.xml" onChange={onImport} />
-            <Button onClick={onExport}>Preview XML</Button>
-            <Button variant="secondary" onClick={downloadXML}>Download XML</Button>
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            <label className="text-sm">Validate with IFC</label>
-            <input
-              type="file"
-              accept=".ifc,.ifczip"
-              onChange={(e) => e.target.files && e.target.files[0] && onValidate(e.target.files[0])}
+          <div className="mt-1 grid grid-cols-3 gap-2">
+            <Input
+              placeholder="Author"
+              value={ids.header.author || ""}
+              onChange={(e) => setIds({ ...ids, header: { ...ids.header, author: e.target.value } })}
+            />
+            <Input
+              type="date"
+              value={ids.header.date || ""}
+              onChange={(e) => setIds({ ...ids, header: { ...ids.header, date: e.target.value } })}
+            />
+            <Input
+              placeholder="Version"
+              value={ids.header.version || ""}
+              onChange={(e) => setIds({ ...ids, header: { ...ids.header, version: e.target.value } })}
             />
           </div>
+          </div>
+          <div className="ds-panel p-3">
+            <h2 className="text-lg font-semibold">Import / Export / Validate</h2>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <input className="max-w-[12rem]" type="file" accept=".ids,.xml" onChange={onImport} />
+              <Button onClick={onExport}>Preview XML</Button>
+              <Button variant="secondary" onClick={downloadXML}>Download XML</Button>
+              <span className="text-sm text-gray-600">IFC:</span>
+              <input
+                className="max-w-[12rem]"
+                type="file"
+                accept=".ifc,.ifczip"
+                onChange={(e) => e.target.files && e.target.files[0] && onValidate(e.target.files[0])}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="ds-panel p-4">
+        {/* Right column: bSDD Libraries panel, fixed height */}
+        <div className="ds-panel p-4 h-[320px] overflow-hidden flex flex-col">
           <h2 className="text-lg font-semibold">bSDD Libraries</h2>
           <p className="mt-1 text-gray-600">Select which bSDD libraries to use. IFC is always enabled.</p>
-          <div className="mt-2 grid gap-2">
-            {libraries.map((lib) => {
-              const isIfc = /\bifc\b/i.test(lib.name) || /\bifc\b/i.test(lib.id);
-              const checked = isIfc || selectedLibs.includes(lib.id);
-              return (
-                <label key={lib.id} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={isIfc}
-                    onChange={(e) => {
-                      setSelectedLibs((prev) => {
-                        const set = new Set(prev);
-                        if (e.target.checked) set.add(lib.id);
-                        else set.delete(lib.id);
-                        return Array.from(set);
-                      });
-                    }}
-                  />
-                  <span className="text-sm">{lib.name}</span>
-                </label>
-              );
-            })}
+          <div className="mt-2 flex items-center gap-3">
+            <Input
+              placeholder="Search dictionaries"
+              value={dictQuery}
+              onChange={(e) => setDictQuery(e.target.value)}
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeTestDicts}
+                onChange={(e) => setIncludeTestDicts(e.target.checked)}
+              />
+              Include test dictionaries
+            </label>
+          </div>
+          <div className="mt-2 grid content-start auto-rows-min gap-2 pr-1 flex-1 overflow-y-auto">
+            {libraries
+              .filter((lib) =>
+                !dictQuery
+                  ? true
+                  : (
+                      (lib.name || "") + " " + (lib.code || "") + " " + (lib.version || "")
+                    )
+                      .toLowerCase()
+                      .includes(dictQuery.toLowerCase())
+              )
+              .map((lib) => {
+                const isIfc = lib.id === "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
+                const checked = isIfc || selectedLibs.includes(lib.id);
+                return (
+                  <label key={lib.id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={isIfc}
+                      onChange={(e) => {
+                        setSelectedLibs((prev) => {
+                          const set = new Set(prev);
+                          if (e.target.checked) set.add(lib.id);
+                          else set.delete(lib.id);
+                          return Array.from(set);
+                        });
+                      }}
+                    />
+                    <span className="text-sm">
+                      {lib.name}
+                      {lib.code || lib.version ? (
+                        <span className="ml-1 text-xs text-gray-500">
+                          {lib.code ? `${lib.code}` : ""}
+                          {lib.code && lib.version ? " • " : ""}
+                          {lib.version ? `${lib.version}` : ""}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
           </div>
         </div>
       </section>
@@ -314,7 +359,7 @@ export default function Page() {
                   }))
                 }
               />
-              <Button variant="ghost" onClick={() => removeSection(section.id)}>
+              <Button variant="accent" onClick={() => removeSection(section.id)}>
                 Remove Section
               </Button>
             </div>
@@ -339,11 +384,12 @@ export default function Page() {
 
             {section.specifications.map((spec) => (
               <div key={spec.id} className="rounded border p-3">
-                <div className="flex items-center gap-2">
+                {/* Row 1: Single Name field (drives both spec.name and spec.title) + optionality */}
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
-                    className="flex-1"
-                    placeholder="Specification title"
-                    value={spec.title}
+                    className="flex-1 min-w-[16rem]"
+                    placeholder="Specification name"
+                    value={(spec.name ?? spec.title) || ''}
                     onChange={(e) =>
                       setIds((prev) => ({
                         ...prev,
@@ -352,7 +398,13 @@ export default function Page() {
                             ? {
                                 ...s,
                                 specifications: s.specifications.map((sp) =>
-                                  sp.id === spec.id ? { ...sp, title: e.target.value } : sp
+                                  sp.id === spec.id
+                                    ? {
+                                        ...sp,
+                                        name: (e.target as HTMLInputElement).value,
+                                        title: (e.target as HTMLInputElement).value,
+                                      }
+                                    : sp
                                 ),
                               }
                             : s
@@ -377,17 +429,85 @@ export default function Page() {
                         ),
                       }))
                     }
-                    className="ds-input"
+                    className="ds-input min-w-[10rem]"
                   >
                     <option value="required">Required</option>
                     <option value="optional">Optional</option>
                     <option value="prohibited">Prohibited</option>
                   </select>
-                  <Button variant="ghost" onClick={() => removeSpecification(section.id, spec.id)}>
-                    Remove Spec
-                  </Button>
                 </div>
 
+                {/* Row 2: Identifier | Instructions | IFC Version | Remove (single line) */}
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[2fr_3fr_1fr_auto] items-center">
+                  <Input
+                    placeholder="Identifier (optional)"
+                    value={spec.identifier || ''}
+                    onChange={(e) =>
+                      setIds((prev) => ({
+                        ...prev,
+                        sections: (prev.sections || []).map((s) =>
+                          s.id === section.id
+                            ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) =>
+                                  sp.id === spec.id ? { ...sp, identifier: (e.target as HTMLInputElement).value } : sp
+                                ),
+                              }
+                            : s
+                        ),
+                      }))
+                    }
+                  />
+                  <Input
+                    placeholder="Instructions (optional)"
+                    value={spec.instructions || ''}
+                    onChange={(e) =>
+                      setIds((prev) => ({
+                        ...prev,
+                        sections: (prev.sections || []).map((s) =>
+                          s.id === section.id
+                            ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) =>
+                                  sp.id === spec.id ? { ...sp, instructions: (e.target as HTMLInputElement).value } : sp
+                                ),
+                              }
+                            : s
+                        ),
+                      }))
+                    }
+                  />
+                  <select
+                    value={spec.ifcVersion || "IFC4"}
+                    onChange={(e) =>
+                      setIds((prev) => ({
+                        ...prev,
+                        sections: (prev.sections || []).map((s) =>
+                          s.id === section.id
+                            ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) =>
+                                  sp.id === spec.id ? { ...sp, ifcVersion: e.target.value as any } : sp
+                                ),
+                              }
+                            : s
+                        ),
+                      }))
+                    }
+                    className="ds-input"
+                    title="IFC schema version"
+                  >
+                    {IDS_IFC_VERSIONS.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <div className="flex justify-end">
+                    <Button variant="accent" onClick={() => removeSpecification(section.id, spec.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+                
                 <Textarea
                   rows={2}
                   placeholder="Specification description"
@@ -519,54 +639,78 @@ export default function Page() {
                         }>Part Of</Button>
                       </div>
                       {(spec.applicability?.entities || []).map((e) => (
-                        <div key={e.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_auto]">
-                          <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
-                            setIds((prev) => ({
+                        <div key={e.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr] gap-2">
+                            <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                  ...s,
+                                  specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
+                                } : s),
+                              }))
+                            } />
+                            <Input placeholder="Predefined Type (optional)" value={e.predefinedType || ""} onChange={(ev) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                  ...s,
+                                  specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, predefinedType: (ev.target as HTMLInputElement).value } : ee) } } : sp),
+                                } : s),
+                              }))
+                            } />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={(e as any).uri || ''} onChange={(ev) => setIds((prev) => ({
                               ...prev,
-                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                ...s,
-                                specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
-                              } : s),
-                            }))
-                          } />
-                          <Input placeholder="Predefined Type (optional)" value={e.predefinedType || ""} onChange={(ev) =>
-                            setIds((prev) => ({
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, uri: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
+                            }))} />
+                            <Input placeholder="Instructions (optional)" value={(e as any).instructions || ''} onChange={(ev) => setIds((prev) => ({
                               ...prev,
-                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                ...s,
-                                specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, predefinedType: (ev.target as HTMLInputElement).value } : ee) } } : sp),
-                              } : s),
-                            }))
-                          } />
-                          <div className="flex items-center">
-                            <Button variant="ghost" className="text-xs" onClick={() => setIds((prev) => ({
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, instructions: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
+                            }))} />
+                            <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
                               ...prev,
-                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                ...s,
-                                specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).filter((ee) => ee.id !== e.id) } } : sp),
-                              } : s),
-                            }))}>Remove</Button>
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).filter((ee) => ee.id !== e.id) } } : sp) } : s),
+                            }))}>Remove</Button></div>
                           </div>
                         </div>
                       ))}
                       {(spec.applicability?.classifications || []).map((c) => (
-                        <div key={c.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_auto]">
-                          <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                        <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr] gap-2">
+                            <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
+                             ...prev,
+                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                           }))} />
-                          <Input placeholder="Code" value={c.code || ""} onChange={(ev) => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, code: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                            <Input placeholder="Code" value={c.code || ""} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, code: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                           }))} />
-                          <div className="flex items-center"><Button variant="ghost" className="text-xs" onClick={() => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
-                          }))}>Remove</Button></div>
+                            <Input placeholder="Name (optional)" value={c.name || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, name: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                            }))} />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={c.uri || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, uri: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                            }))} />
+                            <Input placeholder="Instructions (optional)" value={c.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                            }))} />
+                            <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
+                            }))}>Remove</Button></div>
+                          </div>
                         </div>
                       ))}
                       {(spec.applicability?.attributes || []).map((a) => (
-                        <div key={a.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_2fr_2fr_3fr_auto]">
+                        <div key={a.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr_2fr_3fr] gap-2">
                           <Input placeholder="Attribute Name" value={a.name} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, name: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
@@ -589,14 +733,26 @@ export default function Page() {
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, value: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                           }))} />
-                          <div className="flex items-center"><Button variant="ghost" className="text-xs" onClick={() => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
-                          }))}>Remove</Button></div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={(a as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, uri: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
+                            }))} />
+                            <Input placeholder="Instructions (optional)" value={a.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, instructions: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
+                            }))} />
+                            <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
+                            }))}>Remove</Button></div>
+                          </div>
                         </div>
                       ))}
                       {(spec.applicability?.materials || []).map((m) => (
-                        <div key={m.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_4fr_auto]">
+                        <div key={m.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[2fr_4fr] gap-2">
                           <select className="ds-input" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).map((mm) => mm.id === m.id ? { ...mm, operator: ev.target.value as any } : mm) } } : sp) } : s),
@@ -610,18 +766,35 @@ export default function Page() {
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).map((mm) => mm.id === m.id ? { ...mm, value: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
                           }))} />
-                          <div className="flex items-center"><Button variant="ghost" className="text-xs" onClick={() => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
-                          }))}>Remove</Button></div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={(m as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).map((mm) => mm.id === m.id ? { ...mm, uri: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
+                            }))} />
+                            <Input placeholder="Instructions (optional)" value={(m as any).instructions || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).map((mm) => mm.id === m.id ? { ...mm, instructions: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
+                            }))} />
+                            <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
+                            }))}>Remove</Button></div>
+                          </div>
                         </div>
                       ))}
                       {(spec.applicability?.partOf || []).map((po) => (
-                        <div key={po.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_3fr_auto]">
-                          <Input placeholder="Relation (e.g., IFCRELAGGREGATES)" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
+                        <div key={po.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr_3fr] gap-2">
+                          <select className="ds-input" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
-                          }))} />
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLSelectElement).value as any } : pp) } } : sp) } : s),
+                          }))}>
+                            <option value="">Relation</option>
+                            {IDS_RELATIONS.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
                           <Input placeholder="Child IFC Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), ifcClass: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
@@ -630,14 +803,26 @@ export default function Page() {
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), predefinedType: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
                           }))} />
-                          <div className="flex items-center"><Button variant="ghost" className="text-xs" onClick={() => setIds((prev) => ({
-                            ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
-                          }))}>Remove</Button></div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={(po as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, uri: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
+                            }))} />
+                            <Input placeholder="Instructions (optional)" value={po.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).map((pp) => pp.id === po.id ? { ...pp, instructions: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
+                            }))} />
+                            <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
+                            }))}>Remove</Button></div>
+                          </div>
                         </div>
                       ))}
                       {(spec.applicability?.properties || []).map((p) => (
-                        <div key={p.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_2fr_2fr_2fr_4fr_auto]">                        <Input
+                        <div key={p.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr_2fr_2fr_2fr_4fr] gap-2">                        <Input
                             placeholder="Property Set (e.g., Pset_WallCommon)"
                             value={p.propertySet || ""}
                             onChange={(e) =>
@@ -792,35 +977,90 @@ export default function Page() {
                               }))
                             }
                           />
-                          <div className="flex items-center">
-                            <Button
-                              variant="ghost"
-                              onClick={() =>
-                                setIds((prev) => ({
-                                  ...prev,
-                                  sections: (prev.sections || []).map((s) =>
-                                    s.id === section.id
-                                      ? {
-                                          ...s,
-                                          specifications: s.specifications.map((sp) =>
-                                            sp.id === spec.id
-                                              ? {
-                                                  ...sp,
-                                                  applicability: {
-                                                    ...sp.applicability!,
-                                                    properties: (sp.applicability?.properties || []).filter((pp) => pp.id !== p.id),
-                                                  },
-                                                }
-                                              : sp
-                                          ),
-                                        }
-                                      : s
-                                  ),
-                                }))
-                              }
-                            >
-                              Remove
-                            </Button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                            <Input placeholder="URI (optional)" value={p.uri || ''} onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, uri: (e.target as HTMLInputElement).value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                            />
+                            <Input placeholder="Instructions (optional)" value={p.instructions || ''} onChange={(e) =>
+                              setIds((prev) => ({
+                                ...prev,
+                                sections: (prev.sections || []).map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) =>
+                                          sp.id === spec.id
+                                            ? {
+                                                ...sp,
+                                                applicability: {
+                                                  ...sp.applicability!,
+                                                  properties: (sp.applicability?.properties || []).map((pp) =>
+                                                    pp.id === p.id ? { ...pp, instructions: (e.target as HTMLInputElement).value } : pp
+                                                  ),
+                                                },
+                                              }
+                                            : sp
+                                        ),
+                                      }
+                                    : s
+                                ),
+                              }))
+                            }
+                            />
+                            <div className="flex items-start md:justify-end">
+                              <Button
+                                variant="accent"
+                                onClick={() =>
+                                  setIds((prev) => ({
+                                    ...prev,
+                                    sections: (prev.sections || []).map((s) =>
+                                      s.id === section.id
+                                        ? {
+                                            ...s,
+                                            specifications: s.specifications.map((sp) =>
+                                              sp.id === spec.id
+                                                ? {
+                                                    ...sp,
+                                                    applicability: {
+                                                      ...sp.applicability!,
+                                                      properties: (sp.applicability?.properties || []).filter((pp) => pp.id !== p.id),
+                                                    },
+                                                  }
+                                                : sp
+                                            ),
+                                          }
+                                        : s
+                                    ),
+                                  }))
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -894,8 +1134,9 @@ export default function Page() {
                     </div>
                     {/* Requirements facet editors (render existing entries) */}
                     {(spec.requirements.entities || []).map((e) => (
-                      <div key={e.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_3fr_3fr_auto]">
-                        <select className="ds-input" value={e.optionality || "required"} onChange={(ev) =>
+                      <div key={e.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr] gap-2">
+                          <select className="ds-input" value={e.optionality || "required"} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -909,12 +1150,12 @@ export default function Page() {
                               } : sp),
                             } : s),
                           }))
-                        }>
-                          <option value="required">Required</option>
-                          <option value="optional">Optional</option>
-                          <option value="prohibited">Prohibited</option>
-                        </select>
-                        <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
+                          }>
+                            <option value="required">Required</option>
+                            <option value="optional">Optional</option>
+                            <option value="prohibited">Prohibited</option>
+                          </select>
+                          <Input placeholder="IFC Class" value={e.ifcClass || ""} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -925,8 +1166,8 @@ export default function Page() {
                               } : sp),
                             } : s),
                           }))
-                        } />
-                        <Input placeholder="Predefined Type" value={e.predefinedType || ""} onChange={(ev) =>
+                          } />
+                          <Input placeholder="Predefined Type" value={e.predefinedType || ""} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -937,23 +1178,43 @@ export default function Page() {
                               } : sp),
                             } : s),
                           }))
-                        } />
-                        <div className="flex items-center">
-                          <Button variant="ghost" onClick={() => setIds((prev) => ({
+                          } />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={(e as any).uri || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
-                            sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                              ...s,
-                              specifications: s.specifications.map((sp) => sp.id === spec.id ? {
-                                ...sp,
-                                requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).filter((ee) => ee.id !== e.id) },
-                              } : sp),
-                            } : s),
-                          }))}>Remove</Button>
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, uri: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
+                          }))} />
+                          <Input placeholder="Instructions (optional)" value={(e as any).instructions || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, instructions: (ev.target as HTMLInputElement).value } : ee) } } : sp) } : s),
+                          }))} />
+                          <div className="flex items-start md:justify-end">
+                            <Button variant="accent" onClick={() => setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                ...s,
+                                specifications: s.specifications.map((sp) => sp.id === spec.id ? {
+                                  ...sp,
+                                  requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).filter((ee) => ee.id !== e.id) },
+                                } : sp),
+                              } : s),
+                            }))}>Remove</Button>
+                          </div>
                         </div>
                       </div>
                     ))}
                     {(spec.requirements.classifications || []).map((c) => (
-                      <div key={c.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[3fr_3fr_auto]">
+                      <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr_2fr_2fr_auto] gap-2">
+                          <select className="ds-chip" value={c.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, optionality: ev.target.value as IDSOptionality } : cc) } } : sp) } : s),
+                          }))}>
+                            <option value="required">Required</option>
+                            <option value="optional">Optional</option>
+                            <option value="prohibited">Prohibited</option>
+                          </select>
                         <Input placeholder="Classification System" value={c.system} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
@@ -978,8 +1239,39 @@ export default function Page() {
                             } : s),
                           }))
                         } />
-                        <div className="flex items-center">
-                          <Button variant="ghost" className="text-xs" onClick={() =>
+                        <Input placeholder="Name (optional)" value={c.name || ''} onChange={(ev) =>
+                          setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                              ...s,
+                              specifications: s.specifications.map((sp) => sp.id === spec.id ? {
+                                ...sp,
+                                requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, name: (ev.target as HTMLInputElement).value } : cc) },
+                              } : sp),
+                            } : s),
+                          }))
+                        } />
+                        <select className="ds-chip" value={c.operator || 'equals'} onChange={(ev) => setIds((prev) => ({
+                          ...prev,
+                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, operator: (ev.target as HTMLSelectElement).value as any } : cc) } } : sp) } : s),
+                        }))}>
+                          <option value="equals">equals</option>
+                          <option value="contains">contains</option>
+                          <option value="in">in</option>
+                          <option value="matches">matches</option>
+                        </select>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={c.uri || ''} onChange={(ev) => setIds((prev) => ({
+                          ...prev,
+                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, uri: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                        }))} />
+                          <Input placeholder="Instructions (optional)" value={c.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                          ...prev,
+                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
+                        }))} />
+                          <div className="flex items-start md:justify-end">
+                            <Button variant="accent" className="text-xs" onClick={() =>
                             setIds((prev) => ({
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -991,13 +1283,15 @@ export default function Page() {
                               } : s),
                             }))
                           }>Remove</Button>
+                          </div>
                         </div>
                       </div>
                     ))}
 
                     {(spec.requirements.attributes || []).map((a) => (
-                      <div key={a.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_3fr_2fr_2fr_3fr_auto]">
-                        <select className="ds-input" value={a.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                      <div key={a.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_2fr_2fr_3fr] gap-2">
+                        <select className="ds-chip" value={a.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, optionality: ev.target.value as IDSOptionality } : aa) } } : sp) } : s),
                         }))}>
@@ -1013,7 +1307,7 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, datatype: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                         }))} />
-                        <select className="ds-input" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                        <select className="ds-chip" value={a.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, operator: ev.target.value as any } : aa) } } : sp) } : s),
                         }))}>
@@ -1027,16 +1321,28 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, value: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                         }))} />
-                        <div className="flex items-center"><Button variant="ghost" onClick={() => setIds((prev) => ({
-                          ...prev,
-                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
-                        }))}>Remove</Button></div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={(a as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, uri: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
+                          }))} />
+                          <Input placeholder="Instructions (optional)" value={a.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, instructions: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
+                          }))} />
+                          <div className="flex items-start md:justify-end"><Button variant="accent" onClick={() => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
+                          }))}>Remove</Button></div>
+                        </div>
                       </div>
                     ))}
 
                     {(spec.requirements.materials || []).map((m) => (
-                      <div key={m.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_2fr_3fr_auto]">
-                        <select className="ds-input" value={m.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                      <div key={m.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_3fr] gap-2">
+                        <select className="ds-chip" value={m.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, optionality: ev.target.value as IDSOptionality } : mm) } } : sp) } : s),
                         }))}>
@@ -1044,7 +1350,7 @@ export default function Page() {
                           <option value="optional">Optional</option>
                           <option value="prohibited">Prohibited</option>
                         </select>
-                        <select className="ds-input" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
+                        <select className="ds-chip" value={m.operator || 'present'} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, operator: ev.target.value as any } : mm) } } : sp) } : s),
                         }))}>
@@ -1057,16 +1363,28 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, value: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
                         }))} />
-                        <div className="flex items-center"><Button variant="ghost" onClick={() => setIds((prev) => ({
-                          ...prev,
-                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
-                        }))}>Remove</Button></div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={m.uri || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, uri: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
+                          }))} />
+                          <Input placeholder="Instructions (optional)" value={m.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, instructions: (ev.target as HTMLInputElement).value } : mm) } } : sp) } : s),
+                          }))} />
+                          <div className="flex items-start md:justify-end"><Button variant="accent" onClick={() => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
+                          }))}>Remove</Button></div>
+                        </div>
                       </div>
                     ))}
 
                     {(spec.requirements.partOf || []).map((po) => (
-                      <div key={po.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_3fr_3fr_3fr_auto]">
-                        <select className="ds-input" value={po.optionality || "required"} onChange={(ev) => setIds((prev) => ({
+                      <div key={po.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr_3fr] gap-2">
+                        <select className="ds-chip" value={po.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, optionality: ev.target.value as IDSOptionality } : pp) } } : sp) } : s),
                         }))}>
@@ -1074,10 +1392,15 @@ export default function Page() {
                           <option value="optional">Optional</option>
                           <option value="prohibited">Prohibited</option>
                         </select>
-                        <Input placeholder="Relation (e.g., IFCRELAGGREGATES)" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
+                        <select className="ds-chip w-40" value={po.relation || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
-                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
-                        }))} />
+                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (ev.target as HTMLSelectElement).value as any } : pp) } } : sp) } : s),
+                        }))}>
+                          <option value="">Relation</option>
+                          {IDS_RELATIONS.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
                         <Input placeholder="Child IFC Class" value={po.entity?.ifcClass || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), ifcClass: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
@@ -1086,15 +1409,27 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, entity: { ...(pp.entity || { id: pp.id + '-ent' }), predefinedType: (ev.target as HTMLInputElement).value } } : pp) } } : sp) } : s),
                         }))} />
-                        <div className="flex items-center"><Button variant="ghost" onClick={() => setIds((prev) => ({
-                          ...prev,
-                          sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
-                        }))}>Remove</Button></div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={(po as any).uri || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, uri: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
+                          }))} />
+                          <Input placeholder="Instructions (optional)" value={po.instructions || ''} onChange={(ev) => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, instructions: (ev.target as HTMLInputElement).value } : pp) } } : sp) } : s),
+                          }))} />
+                          <div className="flex items-start md:justify-end"><Button variant="accent" onClick={() => setIds((prev) => ({
+                            ...prev,
+                            sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
+                          }))}>Remove</Button></div>
+                        </div>
                       </div>
                     ))}
                     {spec.requirements.properties.map((p) => (
-                      <div key={p.id} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[2fr_3fr_3fr_2fr_2fr_2fr_4fr_auto]">
-                        <select className="ds-input" value={p.optionality || "required"} onChange={(e) =>
+                      <div key={p.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr_3fr_2fr_2fr_2fr_4fr] gap-2">
+                        <select className="ds-chip" value={p.optionality || "required"} onChange={(e) =>
                           setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? {
@@ -1197,7 +1532,7 @@ export default function Page() {
                             }))
                           }
                         />
-                        <Select
+                        <select className="ds-chip"
                           value={p.operator || "present"}
                           onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                             setIds((prev) => ({
@@ -1237,7 +1572,7 @@ export default function Page() {
                           <option value="contains">contains</option>
                           <option value="in">in</option>
                           <option value="matches">matches</option>
-                        </Select>
+                        </select>
                         <Input
                           placeholder="Value"
                           value={(p.value as string) || ""}
@@ -1267,10 +1602,65 @@ export default function Page() {
                             }))
                           }
                         />
-                        <div className="flex items-center">
-                          <Button variant="ghost" onClick={() => removeProperty(section.id, spec.id, p.id)}>
-                            Remove
-                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <Input placeholder="URI (optional)" value={p.uri || ''} onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, uri: (e.target as HTMLInputElement).value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                          />
+                          <Input placeholder="Instructions (optional)" value={p.instructions || ''} onChange={(e) =>
+                            setIds((prev) => ({
+                              ...prev,
+                              sections: (prev.sections || []).map((s) =>
+                                s.id === section.id
+                                  ? {
+                                      ...s,
+                                      specifications: s.specifications.map((sp) =>
+                                        sp.id === spec.id
+                                          ? {
+                                              ...sp,
+                                              requirements: {
+                                                ...sp.requirements,
+                                                properties: sp.requirements.properties.map((pp) =>
+                                                  pp.id === p.id ? { ...pp, instructions: (e.target as HTMLInputElement).value } : pp
+                                                ),
+                                              },
+                                            }
+                                          : sp
+                                      ),
+                                    }
+                                  : s
+                              ),
+                            }))
+                          }
+                          />
+                          <div className="flex items-start md:justify-end">
+                            <Button variant="accent" onClick={() => removeProperty(section.id, spec.id, p.id)}>
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1292,13 +1682,3 @@ export default function Page() {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-

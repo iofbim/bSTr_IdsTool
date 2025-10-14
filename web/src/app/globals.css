@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Back-compat aliases using Tailwind utilities */
+/* Back-compat aliases + small DS extensions */
 @layer components {
   .nav-item { @apply px-4 py-1.5 rounded-full text-sm font-semibold; }
   .nav-item:hover { background-color: rgba(255,255,255,0.30); color: #ffffff; }
@@ -12,6 +12,52 @@
   .gradientCardBG { background-image: linear-gradient(to bottom right, rgb(var(--color-prim)), rgb(var(--color-accent))); }
   .gradientBG2 { background-image: linear-gradient(to right, rgb(var(--color-textDark)), rgb(var(--color-textMid))); }
   .imageMask { -webkit-mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent); mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent); }
+
+  /* Button variant used across the app (soft/secondary) */
+  .ds-btn--secondary {
+    background-color: rgba(255,255,255,0.8);
+    color: rgb(var(--color-textDark));
+    border: 1px solid rgba(0,0,0,0.12);
+  }
+  /* Accent button (used for destructive/remove actions) */
+  .ds-btn--accent {
+    background-color: rgb(var(--color-textAccent));
+    color: rgb(var(--color-textLight));
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+
+  /* Button size modifiers */
+  .ds-btn--sm { padding: 0.375rem 0.5rem; border-radius: 0.5rem; font-size: 0.8125rem; /* ~13px */ }
+  .ds-btn--md { padding: 0.5rem 0.75rem;  border-radius: 0.75rem; font-size: 0.875rem; /* text-sm */ }
+  .ds-btn--lg { padding: 0.75rem 1rem;    border-radius: 1rem;   font-size: 1rem; }
+
+  /* Chip tones to match designs (black, accent, primary) */
+  .ds-chip--inverse { background-color: rgb(var(--color-textDark)); color: rgb(var(--color-textLight)); }
+  .ds-chip--accent  { background-color: rgb(var(--color-highlight)); color: rgb(var(--color-textLight)); }
+  .ds-chip--primary { background-color: rgb(var(--color-prim)); color: rgb(var(--color-textLight)); }
+
+  /* App-wide input class for native elements and consistency */
+  .ds-input { @apply block w-full bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400 rounded-lg px-2.5 py-1.5 text-xs; }
+  .ds-input--sm { @apply rounded-lg px-2.5 py-1.5 text-xs; }
+  .ds-input--md { @apply rounded-xl px-3   py-2   text-sm; }
+  .ds-input--lg { @apply rounded-2xl px-3.5 py-2.5 text-base; }
+
+  /* Ensure native selects with .ds-chip look like chips */
+  select.ds-chip {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding: 0.125rem 0.5rem; /* match .ds-chip */
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    border: 1px solid rgba(0,0,0,0.12);
+    background-color: #fff;
+  }
+  select.ds-chip:focus { outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,0.06) inset; }
+
+  /* Small facet container (used in lists) */
+  .ds-facet { border: 1px solid rgba(0,0,0,0.12); border-radius: 12px; padding: 8px; }
 }
 
 :root {
@@ -26,11 +72,16 @@
   }
 }
 
-body {
+html {
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-serif, Arial, Helvetica, sans-serif);
-  font-size: 14px; /* reduced global font size */
+  font-size: 14px; /* shrink all rem-based fonts by ~2px from default 16px */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
 }
