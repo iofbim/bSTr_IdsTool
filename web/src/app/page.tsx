@@ -108,6 +108,12 @@ export default function Page() {
     | { scope: "applicability" | "requirements"; sectionId: string; specId: string; entityId: string }
     | null
   >(null);
+  const [classifPickOpen, setClassifPickOpen] = useState(false);
+  const [classifInitialQuery, setClassifInitialQuery] = useState("");
+  const [classifTarget, setClassifTarget] = useState<
+    | { scope: "applicability" | "requirements"; sectionId: string; specId: string; classifId: string }
+    | null
+  >(null);
 
   const xml = useMemo(() => exportToIDSXML(ids), [ids]);
 
@@ -122,21 +128,32 @@ export default function Page() {
       name?: string
     ) => {
       try {
-        const term = (code || name || "").trim();
-        if (!term) return;
-        const params = new URLSearchParams({ term, limit: "1" });
-        for (const d of (classifLibs || [])) params.append("dict", d);
-        const res = await fetch(`/api/bsdd/search?${params.toString()}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
+        const candidates = [code, name, `${name || ""} ${code || ""}`.trim(), system, `${system || ""} ${name || ""}`.trim()]
+          .map((v) => (v || "").trim())
+          .filter((v, i, a) => v.length >= 2 && a.indexOf(v) === i);
+        if (candidates.length === 0) return;
+
+        let hit: any = null;
+        for (const term of candidates) {
+          const params = new URLSearchParams({ term, limit: "1" });
+          for (const d of (classifLibs || [])) params.append("dict", d);
+          const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (Array.isArray(data.results) && data.results.length) {
+            hit = data.results[0];
+            break;
+          }
+        }
         if (!hit) return;
+
         const cls = {
           system: (hit.dictionaryName || hit.dictionaryUri || system || ""),
           code: (hit.referenceCode || code || ""),
           name: (hit.name || name || ""),
           uri: (hit.uri || ""),
         } as Partial<IDSClassificationRequirement> & { uri?: string };
+
         setIds((prev) => ({
           ...prev,
           sections: (prev.sections || []).map((s) =>
@@ -915,7 +932,7 @@ export default function Page() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center"
+                                  className="p-0 h-6 w-12 rounded border flex items-center justify-center"
                                   title="Pick from bSDD"
                                   onClick={() => {
                                     setEntityTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, entityId: e.id });
@@ -998,8 +1015,8 @@ export default function Page() {
                       ))}
                       {(spec.applicability?.classifications || []).map((c) => (
                         <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
-                        <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr] items-center gap-2">
-                            <button type="button" className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
+                        <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr] items-center gap-2 ">
+                            <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                             <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
                              ...prev,
                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -1480,7 +1497,7 @@ export default function Page() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center"
+                              className="p-0 h-6 w-12 rounded border flex items-center justify-center"
                               title="Pick from bSDD"
                               onClick={() => {
                                 setEntityTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, entityId: e.id });
@@ -1582,7 +1599,7 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
-                          <button type="button" className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
+                          <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                         <Input placeholder="Classification System" value={c.system} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
@@ -2089,12 +2106,63 @@ export default function Page() {
         }}
       />
 
+      {/* bSDD Classification Picker */}
+      <BsddClassPicker
+        open={classifPickOpen}
+        onClose={() => setClassifPickOpen(false)}
+        dicts={classifLibs}
+        initialQuery={classifInitialQuery}
+        onPick={(r) => {
+          if (!classifTarget) return;
+          const apply = (updater: (sp: IDSSpecification) => IDSSpecification) => {
+            setIds((prev) => ({
+              ...prev,
+              sections: (prev.sections || []).map((s) =>
+                s.id === classifTarget.sectionId
+                  ? {
+                      ...s,
+                      specifications: s.specifications.map((sp) =>
+                        sp.id === classifTarget.specId ? updater(sp) : sp
+                      ),
+                    }
+                  : s
+              ),
+            }));
+          };
+          const assign = (list?: IDSClassificationRequirement[]) =>
+            (list || []).map((cc) =>
+              cc.id === classifTarget.classifId
+                ? {
+                    ...cc,
+                    system: (r.dictionaryName || r.dictionaryUri || cc.system || ""),
+                    code: r.referenceCode || cc.code || "",
+                    name: r.name || cc.name || "",
+                    uri: r.uri || cc.uri || "",
+                  }
+                : cc
+            );
+          if (classifTarget.scope === "applicability") {
+            apply((sp) => ({
+              ...sp,
+              applicability: { ...sp.applicability!, classifications: assign(sp.applicability?.classifications) },
+            }));
+          } else {
+            apply((sp) => ({
+              ...sp,
+              requirements: { ...sp.requirements, classifications: assign(sp.requirements.classifications) },
+            }));
+          }
+          setClassifPickOpen(false);
+        }}
+      />
+
       <Dialog open={validateOpen} onClose={() => setValidateOpen(false)} title="Validation Result" footer={<Button onClick={() => setValidateOpen(false)}>Close</Button>}>
         <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-all text-xs">{validation}</pre>
       </Dialog>
     </main>
   );
 }
+
 
 
 
