@@ -513,8 +513,8 @@ export default function Page() {
             <h2 className="text-lg font-semibold">Import / Export / Validate</h2>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <input className="max-w-[12rem]" type="file" accept=".ids,.xml" onChange={onImport} aria-label="Import IDS XML" title="Import IDS XML" />
-              <Button onClick={onExport}>Preview XML</Button>
-              <Button variant="secondary" onClick={downloadXML}>Download XML</Button>
+              <Button onClick={onExport}>Preview IDS</Button>
+              <Button variant="secondary" onClick={downloadXML}><img src="/icons/IDS.png" alt="Download XML" className="h-5 w-10 object-contain" /></Button>
               <span className="text-sm text-gray-600">IFC:</span>
               <input
                 className="max-w-[12rem]"
@@ -548,8 +548,8 @@ export default function Page() {
             </label>
           </div>
           <div className="mt-2 grid grid-cols-[auto_auto_1fr] items-center gap-2 text-xs font-medium text-gray-600 pr-1">
-            <div>Facet</div>
-            <div>Classif</div>
+            <div>Fa_</div>
+            <div>Cl_</div>
             <div>Library</div>
           </div>
           <div className="mt-2 grid content-start auto-rows-min gap-2 pr-1 flex-1 overflow-y-auto">
@@ -911,33 +911,36 @@ export default function Page() {
                       {(spec.applicability?.entities || []).map((e) => (
                         <div key={e.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                       <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr] gap-2">
-                          <div className="relative">
-                              <Input list={`ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
-                                setIds((prev) => ({
-                                  ...prev,
-                                  sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                    ...s,
-                                    specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
-                                  } : s),
-                                }))
-                             } onBlur={(ev) => applyEntityClassUriLookup("applicability", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
-                              <datalist id={`ifc-classes-${e.id}`}>
-                                {(ifcClasses || []).map((c) => (
-                                  <option key={c} value={c} />
-                                ))}
-                              </datalist>
-                              <div className="mt-1">
-                                <Button
-                                  className="text-xs bg-gray-100"
-                                  variant="secondary"
+                            <div className="relative">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center"
+                                  title="Pick from bSDD"
                                   onClick={() => {
                                     setEntityTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, entityId: e.id });
                                     setEntityInitialQuery(e.ifcClass || "");
                                     setEntityPickOpen(true);
                                   }}
                                 >
-                                  Pick from bSDD
-                                </Button>
+                                  <img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" />
+                                </button>
+                                <div className="flex-1">
+                                  <Input list={`ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
+                                    setIds((prev) => ({
+                                      ...prev,
+                                      sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                        ...s,
+                                        specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, entities: (sp.applicability?.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) } } : sp),
+                                      } : s),
+                                    }))
+                                  } onBlur={(ev) => applyEntityClassUriLookup("applicability", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
+                                  <datalist id={`ifc-classes-${e.id}`}>
+                                    {(ifcClasses || []).map((c) => (
+                                      <option key={c} value={c} />
+                                    ))}
+                                  </datalist>
+                                </div>
                               </div>
                             </div>
                             {(ifcPredefs && ifcPredefs[(e.ifcClass || "").toUpperCase()] && ifcPredefs[(e.ifcClass || "").toUpperCase()].length) ? (
@@ -995,7 +998,8 @@ export default function Page() {
                       ))}
                       {(spec.applicability?.classifications || []).map((c) => (
                         <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
-                        <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr] gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr] items-center gap-2">
+                            <button type="button" className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                             <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
                              ...prev,
                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -1018,7 +1022,7 @@ export default function Page() {
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                             }))} />
-                            <div><Button className="text-xs bg-gray-100" variant="secondary" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}>Pick from bSDD</Button></div>
+                            
                             <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
@@ -1473,36 +1477,37 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
-                          <div>
-                            <Input list={`req-ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
-                            setIds((prev) => ({
-                              ...prev,
-                              sections: (prev.sections || []).map((s) => s.id === section.id ? {
-                                ...s,
-                                specifications: s.specifications.map((sp) => sp.id === spec.id ? {
-                                  ...sp,
-                                  requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) },
-                                } : sp),
-                              } : s),
-                            }))
-                          } onBlur={(ev) => applyEntityClassUriLookup("requirements", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
-                            <datalist id={`req-ifc-classes-${e.id}`}>
-                              {(ifcClasses || []).map((c) => (
-                                <option key={c} value={c} />
-                              ))}
-                            </datalist>
-                            <div className="mt-1">
-                              <Button
-                                className="text-xs bg-gray-100"
-                                variant="secondary"
-                                onClick={() => {
-                                  setEntityTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, entityId: e.id });
-                                  setEntityInitialQuery(e.ifcClass || "");
-                                  setEntityPickOpen(true);
-                                }}
-                              >
-                                Pick from bSDD
-                              </Button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center"
+                              title="Pick from bSDD"
+                              onClick={() => {
+                                setEntityTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, entityId: e.id });
+                                setEntityInitialQuery(e.ifcClass || "");
+                                setEntityPickOpen(true);
+                              }}
+                            >
+                              <img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" />
+                            </button>
+                            <div className="flex-1">
+                              <Input list={`req-ifc-classes-${e.id}`} placeholder="Class" value={e.ifcClass || ""} onChange={(ev) =>
+                                setIds((prev) => ({
+                                  ...prev,
+                                  sections: (prev.sections || []).map((s) => s.id === section.id ? {
+                                    ...s,
+                                    specifications: s.specifications.map((sp) => sp.id === spec.id ? {
+                                      ...sp,
+                                      requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).map((ee) => ee.id === e.id ? { ...ee, ifcClass: (ev.target as HTMLInputElement).value } : ee) },
+                                    } : sp),
+                                  } : s),
+                                }))
+                              } onBlur={(ev) => applyEntityClassUriLookup("requirements", section.id, spec.id, e.id, (ev.target as HTMLInputElement).value)} />
+                              <datalist id={`req-ifc-classes-${e.id}`}>
+                                {(ifcClasses || []).map((c) => (
+                                  <option key={c} value={c} />
+                                ))}
+                              </datalist>
                             </div>
                           </div>
                           {(ifcPredefs && ifcPredefs[(e.ifcClass || "").toUpperCase()] && ifcPredefs[(e.ifcClass || "").toUpperCase()].length) ? (
@@ -1568,7 +1573,7 @@ export default function Page() {
                     ))}
                     {(spec.requirements.classifications || []).map((c) => (
                       <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
-                        <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr_2fr_2fr_auto] gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr_2fr_2fr_auto] gap-2">
                           <select title="Classification optionality" aria-label="Classification optionality" className="ds-chip" value={c.optionality || "required"} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, optionality: ev.target.value as IDSOptionality } : cc) } } : sp) } : s),
@@ -1577,6 +1582,7 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
+                          <button type="button" className="p-0 h-6 w-12 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                         <Input placeholder="Classification System" value={c.system} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
@@ -1632,7 +1638,7 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                         }))} />
-                          <div><Button className="text-xs bg-gray-100" variant="secondary" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}>Pick from bSDD</Button></div>
+                          
                           <div className="flex items-start md:justify-end">
                             <Button variant="accent" className="text-xs" onClick={() =>
                             setIds((prev) => ({
