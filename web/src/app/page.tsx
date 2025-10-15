@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ds/Button";
 import { Input } from "@/components/ds/Input";
@@ -88,6 +88,7 @@ export default function Page() {
   const [validateOpen, setValidateOpen] = useState(false);
   const [validation, setValidation] = useState<string>("");
   const [selectedLibs, setSelectedLibs] = useState<string[]>([]);
+  const [classifLibs, setClassifLibs] = useState<string[]>([]);
   const [includeTestDicts, setIncludeTestDicts] = useState<boolean>(false);
   const [dictQuery, setDictQuery] = useState<string>("");
   const { libraries } = useBsddLibraries(includeTestDicts);
@@ -109,6 +110,73 @@ export default function Page() {
   >(null);
 
   const xml = useMemo(() => exportToIDSXML(ids), [ids]);
+
+  const pickClassificationFromBsdd = useCallback(
+    async (
+      scope: "applicability" | "requirements",
+      sectionId: string,
+      specId: string,
+      classifId: string,
+      system?: string,
+      code?: string,
+      name?: string
+    ) => {
+      try {
+        const term = (code || name || "").trim();
+        if (!term) return;
+        const params = new URLSearchParams({ term, limit: "1" });
+        for (const d of (classifLibs || [])) params.append("dict", d);
+        const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
+        if (!hit) return;
+        const cls = {
+          system: (hit.dictionaryName || hit.dictionaryUri || system || ""),
+          code: (hit.referenceCode || code || ""),
+          name: (hit.name || name || ""),
+          uri: (hit.uri || ""),
+        } as Partial<IDSClassificationRequirement> & { uri?: string };
+        setIds((prev) => ({
+          ...prev,
+          sections: (prev.sections || []).map((s) =>
+            s.id === sectionId
+              ? {
+                  ...s,
+                  specifications: s.specifications.map((sp) =>
+                    sp.id === specId
+                      ? (scope === "applicability"
+                          ? {
+                              ...sp,
+                              applicability: {
+                                ...sp.applicability!,
+                                classifications: (sp.applicability?.classifications || []).map((cc) =>
+                                  cc.id === classifId ? { ...cc, ...cls } : cc
+                                ),
+                              },
+                            }
+                          : {
+                              ...sp,
+                              requirements: {
+                                ...sp.requirements,
+                                classifications: (sp.requirements.classifications || []).map((cc) =>
+                                  cc.id === classifId ? { ...cc, ...cls } : cc
+                                ),
+                              },
+                            }
+                        )
+                      : sp
+                  ),
+                }
+              : s
+          ),
+        }));
+      } catch {
+        // ignore
+      }
+    },
+    [classifLibs]
+  );
 
   // bSDD class search handled by BsddClassPicker component
 
@@ -479,6 +547,11 @@ export default function Page() {
               Include test dictionaries
             </label>
           </div>
+          <div className="mt-2 grid grid-cols-[auto_auto_1fr] items-center gap-2 text-xs font-medium text-gray-600 pr-1">
+            <div>Facet</div>
+            <div>Classif</div>
+            <div>Library</div>
+          </div>
           <div className="mt-2 grid content-start auto-rows-min gap-2 pr-1 flex-1 overflow-y-auto">
             {libraries
               .filter((lib) =>
@@ -494,30 +567,42 @@ export default function Page() {
                 const isIfc = lib.id === "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
                 const checked = selectedLibs.includes(lib.id);
                 return (
-                  <label key={lib.id} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setSelectedLibs((prev) => {
-                          const set = new Set(prev);
-                          if (e.target.checked) set.add(lib.id);
-                          else set.delete(lib.id);
-                          return Array.from(set);
-                        });
-                      }}
-                    />
-                    <span className="text-sm">
-                      {lib.name}
-                      {lib.code || lib.version ? (
-                        <span className="ml-1 text-xs text-gray-500">
-                          {lib.code ? `${lib.code}` : ""}
-                          {lib.code && lib.version ? " • " : ""}
-                          {lib.version ? `${lib.version}` : ""}
-                        </span>
-                      ) : null}
-                    </span>
-                  </label>
+                  <div key={lib.id} className="grid grid-cols-[auto_auto_1fr] items-center gap-2">
+  <input
+    type="checkbox"
+    checked={selectedLibs.includes(lib.id)}
+    onChange={(e) => {
+      setSelectedLibs((prev) => {
+        const set = new Set(prev);
+        if (e.target.checked) set.add(lib.id);
+        else set.delete(lib.id);
+        return Array.from(set);
+      });
+    }}
+  />
+  <input
+    type="checkbox"
+    checked={classifLibs.includes(lib.id)}
+    onChange={(e) => {
+      setClassifLibs((prev) => {
+        const set = new Set(prev);
+        if (e.target.checked) set.add(lib.id);
+        else set.delete(lib.id);
+        return Array.from(set);
+      });
+    }}
+  />
+  <span className="text-sm truncate">
+    {lib.name}
+    {lib.code || lib.version ? (
+      <span className="ml-1 text-xs text-gray-500">
+        {lib.code ? `${lib.code}` : ""}
+        {lib.code && lib.version ? " · " : ""}
+        {lib.version ? `${lib.version}` : ""}
+      </span>
+    ) : null}
+  </span>
+</div>
                 );
               })}
           </div>
@@ -924,7 +1009,7 @@ export default function Page() {
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, name: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                             }))} />
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2">
                             <Input placeholder="URI (optional)" value={c.uri || ''} onChange={(ev) => setIds((prev) => ({
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, uri: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -933,6 +1018,7 @@ export default function Page() {
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                             }))} />
+                            <div><Button className="text-xs bg-gray-100" variant="secondary" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}>Pick from bSDD</Button></div>
                             <div className="flex items-start md:justify-end"><Button variant="accent" className="text-xs" onClick={() => setIds((prev) => ({
                               ...prev,
                               sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
@@ -1537,7 +1623,7 @@ export default function Page() {
                           <option value="matches">matches</option>
                         </select>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-2">
                           <Input placeholder="URI (optional)" value={c.uri || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, uri: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -1546,6 +1632,7 @@ export default function Page() {
                           ...prev,
                           sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, instructions: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
                         }))} />
+                          <div><Button className="text-xs bg-gray-100" variant="secondary" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}>Pick from bSDD</Button></div>
                           <div className="flex items-start md:justify-end">
                             <Button variant="accent" className="text-xs" onClick={() =>
                             setIds((prev) => ({
@@ -2002,3 +2089,6 @@ export default function Page() {
     </main>
   );
 }
+
+
+
