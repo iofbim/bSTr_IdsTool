@@ -29,12 +29,12 @@ export function useBsddLibraries(includeTest: boolean) {
   return { libraries, loading, error };
 }
 
-export function useBsddClassSearch(term: string, dicts: string[], debounceMs = 250) {
+export function useBsddClassSearch(term: string, dicts: string[], limit = 20, debounceMs = 250) {
   const [results, setResults] = useState<BsddClass[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const key = useMemo(() => `${term}|${dicts.join(";")}`, [term, dicts]);
+  const key = useMemo(() => `${term}|${dicts.join(";")}|${limit}`, [term, dicts, limit]);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -47,7 +47,7 @@ export function useBsddClassSearch(term: string, dicts: string[], debounceMs = 2
     setLoading(true);
     timer.current = setTimeout(async () => {
       try {
-        setResults(await searchClasses(term.trim(), dicts));
+        setResults(await searchClasses(term.trim(), dicts, limit));
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -62,4 +62,3 @@ export function useBsddClassSearch(term: string, dicts: string[], debounceMs = 2
 
   return { results, loading, error };
 }
-

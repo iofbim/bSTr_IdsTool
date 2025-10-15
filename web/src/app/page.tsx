@@ -1016,7 +1016,7 @@ export default function Page() {
                       {(spec.applicability?.classifications || []).map((c) => (
                         <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr] items-center gap-2 ">
-                            <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("applicability", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
+                            <button type="button" className="p-0 h-6 w-6 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-5 w-5 object-contain" /></button>
                             <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
                              ...prev,
                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -1599,7 +1599,7 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
-                          <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => pickClassificationFromBsdd("requirements", section.id, spec.id, c.id, c.system, c.code, c.name)}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
+                          <button type="button" className="p-0 h-6 w-6 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-5 w-5 object-contain" /></button>
                         <Input placeholder="Classification System" value={c.system} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
@@ -2162,6 +2162,7 @@ export default function Page() {
     </main>
   );
 }
+
 
 
 

@@ -17,16 +17,25 @@ type Props = {
 
 export default function BsddClassPicker({ open, onClose, dicts, initialQuery, onPick }: Props) {
   const [query, setQuery] = useState(initialQuery || "");
+  const [limit, setLimit] = useState(50);
   useEffect(() => {
-    if (open) setQuery(initialQuery || "");
+    if (open) {
+      setQuery(initialQuery || "");
+      setLimit(50);
+    }
   }, [open, initialQuery]);
-  const { results, loading } = useBsddClassSearch(query, dicts, 250);
+  const { results, loading } = useBsddClassSearch(query, dicts, limit, 250);
 
   return (
     <Dialog open={open} onClose={onClose} title="Pick IFC Class from bSDD" footer={<Button onClick={onClose}>Close</Button>}>
       <div className="grid gap-2">
         <Input placeholder="Type to search classes (min 2 chars)" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <div className="max-h-[45vh] overflow-auto">
+        <div className="max-h-[45vh] overflow-auto" onScroll={(e) => {
+          const el = e.currentTarget as HTMLDivElement;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48 && !loading) {
+            setLimit((prev) => Math.min(prev + 50, 500));
+          }
+        }}>
           {loading ? (
             <p className="text-sm text-gray-500">Searching…</p>
           ) : results.length === 0 ? (
