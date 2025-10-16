@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchLibraries, searchClasses } from "@/lib/bsdd/api";
+import { fetchLibraries, searchClassesWithTotal } from "@/lib/bsdd/api";
 import type { Library, BsddClass } from "@/lib/bsdd/types";
 
 export function useBsddLibraries(includeTest: boolean) {
@@ -31,6 +31,8 @@ export function useBsddLibraries(includeTest: boolean) {
 
 export function useBsddClassSearch(term: string, dicts: string[], limit = 20, debounceMs = 250) {
   const [results, setResults] = useState<BsddClass[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [mode, setMode] = useState<"rest" | "graphql" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,6 +42,8 @@ export function useBsddClassSearch(term: string, dicts: string[], limit = 20, de
     if (timer.current) clearTimeout(timer.current);
     if (!term || term.trim().length < 2) {
       setResults([]);
+      setTotal(null);
+      setMode(null);
       setLoading(false);
       setError(null);
       return;
@@ -47,7 +51,10 @@ export function useBsddClassSearch(term: string, dicts: string[], limit = 20, de
     setLoading(true);
     timer.current = setTimeout(async () => {
       try {
-        setResults(await searchClasses(term.trim(), dicts, limit));
+        const resp = await searchClassesWithTotal(term.trim(), dicts, limit);
+        setResults(resp.results);
+        setTotal(resp.total ?? null);
+        setMode(resp.mode ?? null);
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -60,5 +67,5 @@ export function useBsddClassSearch(term: string, dicts: string[], limit = 20, de
     };
   }, [key, debounceMs, term, dicts]);
 
-  return { results, loading, error };
+  return { results, total, mode, loading, error };
 }

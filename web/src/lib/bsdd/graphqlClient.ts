@@ -20,7 +20,7 @@ export async function gqlFetch<T = any>(
     opts.endpoint ||
     process.env.BSDD_GQL_URL ||
     // Default to test (open) endpoint for development
-    "https://test.bsdd.buildingsmart.org/graphql/";
+    "https://api.bsdd.buildingsmart.org/graphqls/";
   const token = opts.token || process.env.BSDD_GQL_TOKEN;
 
   const res = await fetch(endpoint, {

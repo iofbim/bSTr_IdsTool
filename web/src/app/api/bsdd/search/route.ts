@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { GraphqlBsddProvider } from "@/lib/bsdd/providers/graphql";
 import { BSDD_TRANSPORT } from "@/lib/bsdd/provider";
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     if (BSDD_TRANSPORT === "graphql" && dicts.length) {
       const provider = new GraphqlBsddProvider();
       const results = await provider.searchClasses(term, dicts, limit);
-      return Response.json({ results, total: results.length });
+      return Response.json({ results, total: results.length, mode: 'graphql' });
     }
 
     const url = new URL("https://api.bsdd.buildingsmart.org/api/Class/Search/v1");
@@ -36,9 +36,10 @@ export async function GET(req: NextRequest) {
     }
     const data = (await r.json()) as { classes?: unknown[]; totalCount?: number };
     const res = Array.isArray((data as any).classes) ? (data as any).classes : [];
-    return Response.json({ results: res, total: data.totalCount ?? res.length });
+    return Response.json({ results: res, total: data.totalCount ?? res.length, mode: 'rest' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
+

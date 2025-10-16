@@ -1,10 +1,9 @@
-﻿// References
+// References
 // - bSDD/Documentation/bSDD and GraphQL.md (GraphQL endpoints, examples)
 // - bSDD/Documentation/bSDD API.md (REST parity and concepts)
 import { gqlFetch } from "../graphqlClient";
 import type { BsddProvider } from "../provider";
 import type { Library, BsddClass, BsddClassDetail } from "../types";
-import { BSDD_LANG } from "@/config/bsdd";
 
 function extractDictionaryUriFromClassUri(classUri: string): string | null {
   try {
@@ -36,12 +35,10 @@ export class GraphqlBsddProvider implements BsddProvider {
 
     // Build a single operation with multiple aliased dictionary queries
     // to search each dictionary in one roundtrip.
-    // Per bSDD/Documentation/bSDD and GraphQL.md, dictionary.classSearch requires searchText and languageCode.
-    // Introspection on test endpoint confirms NON_NULL args for both (see languages list for valid codes).
     const fields: string[] = [];
     const variables: Record<string, unknown> = {
       searchText: trimmed,
-      languageCode: BSDD_LANG,
+      languageCode: process.env.NEXT_PUBLIC_BSDD_LANG || "en-US",
     };
     dicts.forEach((uri, i) => {
       const alias = `d${i}`;
@@ -53,14 +50,14 @@ export class GraphqlBsddProvider implements BsddProvider {
           name
           classSearch(searchText: $searchText, languageCode: $languageCode) {
             name
-            code
+            referenceCode
             uri
+            dictionaryUri
           }
         }
       `);
     });
 
-    // Query built with aliases to fetch from multiple dictionaries in one POST (GET not supported).
     const query = `query Search($searchText: String!, $languageCode: String!, ${dicts
       .map((_, i) => `$u${i}: String!`)
       .join(", ")}) {
@@ -76,72 +73,45 @@ export class GraphqlBsddProvider implements BsddProvider {
     for (const key of Object.keys(data || {})) {
       const block = (data as any)[key];
       const arr = Array.isArray(block?.classSearch) ? block.classSearch : [];
-      for (const r of arr) {
+      for (const r of arr.slice(0, limit)) {
         results.push({
-          name: String(r.name || r.code || "Class"),
-          referenceCode: r.code || undefined,
+          name: String(r.name || r.referenceCode || "Class"),
+          referenceCode: r.referenceCode || undefined,
           uri: String(r.uri || ""),
-          dictionaryUri: String(block?.uri || ""),
+          dictionaryUri: String(r.dictionaryUri || block?.uri || ""),
           dictionaryName: block?.name,
         });
       }
     }
-        const termLc = trimmed.toLowerCase();
-    const filtered = results.filter((it) => {
-      const nameLc = (it.name || '').toLowerCase();
-      const codeLc = (it.referenceCode || '').toLowerCase();
-      if (codeLc.startsWith('pset_') || codeLc.startsWith('qto_')) return false;
-      if (nameLc.startsWith('property set') || nameLc.startsWith('quantity set')) return false;
-      if (!(nameLc.includes(termLc) || codeLc.includes(termLc))) return false;
-      return true;
-    });
-
-    const score = (it: BsddClass) => {
-      const nameLc = (it.name || '').toLowerCase();
-      const codeLc = (it.referenceCode || '').toLowerCase();
-      let s = 0;
-      if (codeLc === termLc) s += 1000;
-      if (nameLc === termLc) s += 900;
-      if (codeLc.startsWith(termLc)) s += 500;
-      if (nameLc.startsWith(termLc)) s += 400;
-      if (codeLc.includes(termLc)) s += 200;
-      if (nameLc.includes(termLc)) s += 100;
-      if (codeLc.startsWith('ifc')) s += 50; // prefer IFC entities
-      return s;
-    };
-
-    filtered.sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
-    return filtered.slice(0, limit);
+    return results;
   }
 
   async getClass(uri: string): Promise<BsddClassDetail | null> {
     const dictUri = extractDictionaryUriFromClassUri(uri);
     if (!dictUri) return null;
-    // Query built with aliases to fetch from multiple dictionaries in one POST (GET not supported).
     const query = `query ($dictionaryUri: String!, $uri: String!, $languageCode: String!) {
       dictionary(uri: $dictionaryUri) {
         uri
         class(uri: $uri, languageCode: $languageCode, includeChildren: false) {
           name
-          code
+          referenceCode
           uri
         }
       }
     }`;
     const data = await gqlFetch<{ dictionary?: { class?: any } }>({
       query,
-      variables: { dictionaryUri: dictUri, uri, languageCode: BSDD_LANG },
+      variables: { dictionaryUri: dictUri, uri, languageCode: process.env.NEXT_PUBLIC_BSDD_LANG || "en-US" },
     });
     const c = data?.dictionary?.class;
     if (!c) return null;
     return {
-      name: String(c.name || c.code || "Class"),
-      referenceCode: c.code || undefined,
+      name: String(c.name || c.referenceCode || "Class"),
+      referenceCode: c.referenceCode || undefined,
       uri: String(c.uri || uri),
       dictionaryUri: dictUri,
       description: undefined,
     };
   }
 }
-
 

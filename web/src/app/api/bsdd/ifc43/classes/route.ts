@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+﻿import { NextRequest } from "next/server";
 import { gqlFetch } from "@/lib/bsdd/graphqlClient";
 
 const IFC43 = "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3";
@@ -8,14 +8,14 @@ export async function GET(_req: NextRequest) {
     const query = `query ($uri: String!) {
       dictionary(uri: $uri) {
         uri
-        classSearch {
-          referenceCode
+        classSearch(languageCode: "EN") {
+          code
           name
           uri
         }
       }
     }`;
-    const data = await gqlFetch<{ dictionary?: { classSearch?: { referenceCode?: string; name?: string; uri?: string }[] } }>({
+    const data = await gqlFetch<{ dictionary?: { classSearch?: { code?: string; name?: string; uri?: string }[] } }>({
       query,
       variables: { uri: IFC43 },
     });
@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest) {
     const names = Array.from(
       new Set(
         arr
-          .map((c) => (c.referenceCode || c.name || "").toString().trim())
+          .map((c) => (c.code || c.name || "").toString().trim())
           .filter(Boolean)
       )
     ).sort();
@@ -33,4 +33,5 @@ export async function GET(_req: NextRequest) {
     return Response.json({ error: msg }, { status: 500 });
   }
 }
+
 

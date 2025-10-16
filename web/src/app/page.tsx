@@ -9,6 +9,8 @@ import { useBsddLibraries } from "@/hooks/useBsdd";
 import { useIfcCatalog } from "@/hooks/useIfcCatalog";
 import BsddClassPicker from "@/components/bsdd/BsddClassPicker";
 import { exportToIDSXML, parseIDSXML } from "@/lib/ids/xml";
+import AttrBsddHelper from "@/components/bsdd/AttrBsddHelper";
+import PropertyBsddHelper from "@/components/bsdd/PropertyBsddHelper";
 import type {
   IDSPropertyRequirement,
   IDSRoot,
@@ -1016,7 +1018,7 @@ export default function Page() {
                       {(spec.applicability?.classifications || []).map((c) => (
                         <div key={c.id} className="ds-facet mt-2 grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_2fr] items-center gap-2 ">
-                            <button type="button" className="p-0 h-6 w-6 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-5 w-5 object-contain" /></button>
+                            <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "applicability", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                             <Input placeholder="Classification System" value={c.system} onChange={(ev) => setIds((prev) => ({
                              ...prev,
                              sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).map((cc) => cc.id === c.id ? { ...cc, system: (ev.target as HTMLInputElement).value } : cc) } } : sp) } : s),
@@ -1068,6 +1070,7 @@ export default function Page() {
                             <option value="in">in</option>
                             <option value="matches">matches</option>
                           </select>
+                          <AttrBsddHelper dicts={selectedLibs} initialQuery={a.name} onPick={(sel: any) => setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map(aa => aa.id===a.id ? { ...aa, name: sel.name || sel.code || "", datatype: sel.dataType || "", uri: sel.uri || "" } : aa) } } : sp) } : s) }))} />
                           <Input placeholder="Value" value={(a.value as any) || ''} onChange={(ev) => setIds((prev) => ({
                             ...prev,
                             sections: (prev.sections || []).map((s) => s.id === section.id ? { ...s, specifications: s.specifications.map((sp) => sp.id === spec.id ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, value: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
@@ -1190,6 +1193,7 @@ export default function Page() {
                               }))
                             }
                           />
+                            <PropertyBsddHelper dicts={selectedLibs} initialQuery={p.name || p.propertySet} onPick={(sel: any) => { if (sel.set) { setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, applicability: { ...sp.applicability!, properties: (sp.applicability?.properties || []).map(pp => pp.id===p.id ? { ...pp, propertySet: sel.set! } : pp) } } : sp) } : s) })); } if (sel.prop) { setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, applicability: { ...sp.applicability!, properties: (sp.applicability?.properties || []).map(pp => pp.id===p.id ? { ...pp, name: sel.prop!.name || sel.prop!.code || "", datatype: sel.prop!.dataType || "", uri: sel.prop!.uri || "" } : pp) } } : sp) } : s) })); } }} />
                           <Input
                             placeholder="Property Name (Base Name)"
                             value={p.name}
@@ -1599,7 +1603,7 @@ export default function Page() {
                             <option value="optional">Optional</option>
                             <option value="prohibited">Prohibited</option>
                           </select>
-                          <button type="button" className="p-0 h-6 w-6 bg-transparent border-0 flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-5 w-5 object-contain" /></button>
+                          <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => { setClassifTarget({ scope: "requirements", sectionId: section.id, specId: spec.id, classifId: c.id }); setClassifInitialQuery(c.code || c.name || c.system || ""); setClassifPickOpen(true); }}><img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" /></button>
                         <Input placeholder="Classification System" value={c.system} onChange={(ev) =>
                           setIds((prev) => ({
                             ...prev,
@@ -1702,6 +1706,7 @@ export default function Page() {
                           <option value="contains">contains</option>
                           <option value="in">in</option>
                           <option value="matches">matches</option>
+                          <AttrBsddHelper dicts={selectedLibs} initialQuery={a.name} onPick={(sel: any) => setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map(aa => aa.id===a.id ? { ...aa, name: sel.name || sel.code || "", datatype: sel.dataType || "", uri: sel.uri || "" } : aa) } } : sp) } : s) }))} />
                         </select>
                         <Input placeholder="Value" value={(a.value as any) || ''} onChange={(ev) => setIds((prev) => ({
                           ...prev,
@@ -1860,6 +1865,7 @@ export default function Page() {
                             }))
                           }
                         />
+                        <PropertyBsddHelper dicts={selectedLibs} initialQuery={p.name || p.propertySet} onPick={(sel: any) => { if (sel.set) { setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, requirements: { ...sp.requirements, properties: sp.requirements.properties.map(pp => pp.id===p.id ? { ...pp, propertySet: sel.set! } : pp) } } : sp) } : s) })); } if (sel.prop) { setIds(prev => ({ ...prev, sections: (prev.sections || []).map(s => s.id===section.id ? { ...s, specifications: s.specifications.map(sp => sp.id===spec.id ? { ...sp, requirements: { ...sp.requirements, properties: sp.requirements.properties.map(pp => pp.id===p.id ? { ...pp, name: sel.prop!.name || sel.prop!.code || "", datatype: sel.prop!.dataType || "", uri: sel.prop!.uri || "" } : pp) } } : sp) } : s) })); } }} />
                         <Input
                           placeholder="Name"
                           value={p.name}
