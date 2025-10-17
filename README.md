@@ -11,7 +11,7 @@ Web-based IDS editor with bSDD-assisted authoring.
 ## Running locally
 
 ```
-cd web
+cd idsAuthoring
 npm install
 npm run dev
 ```

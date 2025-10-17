@@ -1,0 +1,45 @@
+name: ids-authoring
+
+services:
+  ids:
+    build:
+      context: ./idsAuthoring
+      dockerfile: Dockerfile
+      args:
+        NEXT_BASE_PATH: ${NEXT_BASE_PATH-/tools/ids}
+        BSDD_TRANSPORT: ${BSDD_TRANSPORT-rest}
+        NEXT_PUBLIC_BSDD_MAX_LIMIT: ${NEXT_PUBLIC_BSDD_MAX_LIMIT-500}
+        NEXT_PUBLIC_BSDD_PAGE_SIZE: ${NEXT_PUBLIC_BSDD_PAGE_SIZE-50}
+        NEXT_PUBLIC_BSDD_LANG: ${NEXT_PUBLIC_BSDD_LANG-EN}
+        BSDD_GQL_URL: ${BSDD_GQL_URL-}
+        BSDD_GQL_TOKEN: ${BSDD_GQL_TOKEN-}
+    image: ids-authoring-tool:latest
+    restart: unless-stopped
+    environment:
+      # Next.js served under a subpath; adjust to your routing
+      NEXT_BASE_PATH: ${NEXT_BASE_PATH-/tools/ids}
+      # bSDD transport and settings
+      BSDD_TRANSPORT: ${BSDD_TRANSPORT-rest}
+      NEXT_PUBLIC_BSDD_MAX_LIMIT: ${NEXT_PUBLIC_BSDD_MAX_LIMIT-500}
+      NEXT_PUBLIC_BSDD_PAGE_SIZE: ${NEXT_PUBLIC_BSDD_PAGE_SIZE-50}
+      NEXT_PUBLIC_BSDD_LANG: ${NEXT_PUBLIC_BSDD_LANG-EN}
+      # Optional GraphQL
+      # BSDD_GQL_URL: ${BSDD_GQL_URL-}
+      # BSDD_GQL_TOKEN: ${BSDD_GQL_TOKEN-}
+      # Python is installed in the image; override only if needed
+      PYTHON: /usr/bin/python3
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik_web
+      traefik.http.routers.ids.entrypoints: websecure
+      traefik.http.routers.ids.tls.certresolver: letsencrypt
+      # Change host(s) and path to match your stack
+      traefik.http.routers.ids.rule: (Host(`iofbim.io`) || Host(`www.iofbim.io`)) && PathPrefix(`/tools/ids`)
+      traefik.http.routers.ids.priority: "100"
+      traefik.http.services.ids.loadbalancer.server.port: "3000"
+    networks: [web]
+
+networks:
+  web:
+    name: traefik_web
+    external: true

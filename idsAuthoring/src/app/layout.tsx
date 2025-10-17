@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Montserrat, Raleway } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import Header from "@/sections/Header";
 
 const montserrat = Montserrat({
   subsets: ["latin-ext"],
@@ -28,7 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${montserrat.variable} ${raleway.variable}`} suppressHydrationWarning>
       <body className="bg-customBg text-textDark antialiased font-sans">
-        {children}
+        <LanguageProvider>
+          <Header />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

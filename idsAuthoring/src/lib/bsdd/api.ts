@@ -3,7 +3,7 @@
 import type { Library, BsddClass, BsddClassDetail } from "./types";
 
 export async function fetchLibraries(includeTest: boolean): Promise<Library[]> {
-  const res = await fetch(`/api/bsdd/libraries?includeTest=${includeTest ? "1" : "0"}`);
+  const res = await fetch(`${base}/api/bsdd/libraries?includeTest=${includeTest ? "1" : "0"}`);
   if (!res.ok) return [];
   const data = (await res.json()) as { libraries?: Library[] };
   return data.libraries ?? [];
@@ -17,7 +17,7 @@ export async function searchClasses(
   if (!term || term.length < 2) return [];
   const params = new URLSearchParams({ term, limit: String(limit) });
   for (const d of dicts) params.append("dict", d);
-  const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+  const res = await fetch(`${base}/api/bsdd/search?${params.toString()}`);
   if (!res.ok) return [];
   const data = (await res.json()) as { results?: any[] };
   return (data.results || []).map((r) => ({
@@ -43,7 +43,7 @@ export async function searchClassesWithTotal(
   if (!term || term.length < 2) return { results: [], total: null, mode: null };
   const params = new URLSearchParams({ term, limit: String(limit) });
   for (const d of dicts) params.append("dict", d);
-  const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+  const res = await fetch(`${base}/api/bsdd/search?${params.toString()}`);
   if (!res.ok) return { results: [], total: null, mode: null };
   const data = (await res.json()) as { results?: any[]; total?: number; mode?: string };
   const results = (data.results || []).map((r) => ({
@@ -61,7 +61,7 @@ export async function searchClassesWithTotal(
 export async function getClass(uri: string): Promise<BsddClassDetail | null> {
   if (!uri) return null;
   const params = new URLSearchParams({ Uri: uri });
-  const res = await fetch(`/api/bsdd/class?${params.toString()}`);
+  const res = await fetch(`${base}/api/bsdd/class?${params.toString()}`);
   if (!res.ok) return null;
   try {
     const obj = (await res.json()) as any;
@@ -98,7 +98,7 @@ export async function fetchClassProperties(
   if (typeof opts.offset === "number") params.set("Offset", String(opts.offset));
   if (typeof opts.limit === "number") params.set("Limit", String(opts.limit));
   if (opts.languageCode) params.set("languageCode", opts.languageCode);
-  const res = await fetch(`/api/bsdd/class/properties?${params.toString()}`);
+  const res = await fetch(`${base}/api/bsdd/class/properties?${params.toString()}`);
   if (!res.ok) return [];
   const data = await res.json();
   // The exact contract fields vary; normalize defensively
@@ -123,3 +123,4 @@ export async function fetchClassProperties(
     } as ClassPropertyBinding;
   });
 }
+const base = process.env.NEXT_PUBLIC_BASE_PATH || "";

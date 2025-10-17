@@ -80,6 +80,7 @@ function newSection(): IDSSection {
 }
 
 export default function Page() {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const [ids, setIds] = useState<IDSRoot>({
     header: { title: "Untitled IDS", description: "", author: "", date: "", version: "0.1.0" },
     sections: [newSection()],
@@ -139,7 +140,7 @@ export default function Page() {
         for (const term of candidates) {
           const params = new URLSearchParams({ term, limit: "1" });
           for (const d of (classifLibs || [])) params.append("dict", d);
-          const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+          const res = await fetch(`${base}/api/bsdd/search?${params.toString()}`);
           if (!res.ok) continue;
           const data = await res.json();
           if (Array.isArray(data.results) && data.results.length) {
@@ -318,7 +319,7 @@ export default function Page() {
         const params = new URLSearchParams({ term, limit: "1" });
         // Always search in IFC 4.3 when class picked from our dropdown
         params.append("dict", "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3");
-        const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+        const res = await fetch(`${base}/api/bsdd/search?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
         const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
@@ -421,7 +422,7 @@ export default function Page() {
         const trySearch = async (term: string) => {
           const params = new URLSearchParams({ term, limit: "1" });
           for (const d of selectedLibs) params.append("dict", d);
-          const res = await fetch(`/api/bsdd/search?${params.toString()}`);
+          const res = await fetch(`${base}/api/bsdd/search?${params.toString()}`);
           if (!res.ok) return undefined as string | undefined;
           const data = await res.json();
           const hit = Array.isArray(data.results) && data.results.length ? data.results[0] : null;
@@ -481,7 +482,7 @@ export default function Page() {
     const form = new FormData();
     form.append("idsXml", new Blob([xml], { type: "application/xml" }), "spec.ids");
     form.append("ifc", ifcFile);
-    const res = await fetch("/api/validate", { method: "POST", body: form });
+    const res = await fetch(`${base}/api/validate`, { method: "POST", body: form });
     const data = await res.json();
     setValidation(JSON.stringify(data, null, 2));
     setValidateOpen(true);
@@ -2168,8 +2169,6 @@ export default function Page() {
     </main>
   );
 }
-
-
 
 
 

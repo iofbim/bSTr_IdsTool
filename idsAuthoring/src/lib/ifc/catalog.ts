@@ -29,7 +29,8 @@ export async function loadIfcPredefsFiltered(): Promise<{ classes: string[]; pre
   }
 
   // Fetch bSDD IFC4.3 class names via server proxy
-  const bsddRes = await fetch("/api/bsdd/ifc43/classes", { cache: "force-cache" });
+  const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  const bsddRes = await fetch(`${base}/api/bsdd/ifc43/classes`, { cache: "force-cache" });
   const bsddJson = (await bsddRes.json()) as { classes?: string[] };
   const bsddSet = new Set((bsddJson.classes || []).map((n) => n.toUpperCase()));
 
@@ -40,4 +41,3 @@ export async function loadIfcPredefsFiltered(): Promise<{ classes: string[]; pre
 
   return { classes: sortedClasses, predefs };
 }
-
