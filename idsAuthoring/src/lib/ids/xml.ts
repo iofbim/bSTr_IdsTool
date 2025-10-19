@@ -367,7 +367,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
       if (spec.applicability.classifications && spec.applicability.classifications.length) {
         (applicability as any)["ids:classification"] = spec.applicability.classifications.map((c) => ({
           "ids:system": idsValue(c.system || ""),
-          ...(c.code ? { "ids:value": opToIdsValue("equals", c.code) } : {}),
+          ...(c.value ? { "ids:value": opToIdsValue("equals", c.value) } : {}),
         }));
       }
       if (spec.applicability.attributes && spec.applicability.attributes.length) {
@@ -412,7 +412,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
         ...(c.uri ? { "@_uri": c.uri } : {}),
         ...(c.instructions ? { "@_instructions": c.instructions } : {}),
         "ids:system": idsValue(c.system || ""),
-        ...(c.code ? { "ids:value": opToIdsValue((c.operator as any) || "equals", c.code) } : {}),
+        ...(c.value ? { "ids:value": opToIdsValue((c.operator as any) || "equals", c.value) } : {}),
       }));
     }
     if (spec.requirements?.attributes && spec.requirements.attributes.length) {

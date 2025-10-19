@@ -15,8 +15,11 @@ export interface IDSPropertyRequirement {
 export interface IDSClassificationRequirement {
   id: UUID;
   system: string; // e.g., "bSDD" or a classification system URI
-  code?: string; // e.g., "21.31"
-  name?: string;
+  // New canonical field aligned with ids:value
+  value?: string;
+  // Legacy fields kept for backward compatibility during migration
+  code?: string; // e.g., "21.31" (deprecated; prefer value)
+  name?: string; // (deprecated; prefer value)
   uri?: string; // allowed on requirements: classification
   instructions?: string; // allowed on requirements: classification
   // IDS supports cardinality on classification in requirements

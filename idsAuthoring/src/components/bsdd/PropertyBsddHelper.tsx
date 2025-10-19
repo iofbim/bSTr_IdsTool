@@ -1,5 +1,6 @@
 ﻿"use client";
 import { useState } from "react";
+import Image from "next/image";
 import BsddClassPicker from "@/components/bsdd/BsddClassPicker";
 import { fetchClassProperties } from "@/lib/bsdd/api";
 
@@ -25,7 +26,7 @@ export default function PropertyBsddHelper({ dicts, onPick, initialQuery }: Prop
         title="Pick class from bSDD"
         onClick={() => setOpen(true)}
       >
-        <img src="/icons/bSDD.png" alt="Pick from bSDD" className="h-6 w-12 object-contain" />
+        <Image src="/icons/bSDD.png" alt="Pick from bSDD" width={48} height={24} />
       </button>
       {sets.length ? (
         <>
@@ -38,7 +39,7 @@ export default function PropertyBsddHelper({ dicts, onPick, initialQuery }: Prop
               onPick({ set: v });
             }}
           >
-            <option value="">Select set…</option>
+            <option value="">Select set.</option>
             {sets.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -55,7 +56,7 @@ export default function PropertyBsddHelper({ dicts, onPick, initialQuery }: Prop
                 if (sel) onPick({ prop: sel });
               }}
             >
-              <option value="">Select property…</option>
+              <option value="">Select property.</option>
               {bySet[selectedSet].map((it) => (
                 <option key={(it.uri || it.code || it.name || Math.random()).toString()} value={it.code || it.name}>
                   {it.name || it.code}
@@ -74,7 +75,7 @@ export default function PropertyBsddHelper({ dicts, onPick, initialQuery }: Prop
             if (sel) onPick({ prop: sel });
           }}
         >
-          <option value="">Select property…</option>
+          <option value="">Select property.</option>
           {allProps.map((it) => (
             <option key={(it.uri || it.code || it.name || Math.random()).toString()} value={it.code || it.name}>
               {it.name || it.code}
