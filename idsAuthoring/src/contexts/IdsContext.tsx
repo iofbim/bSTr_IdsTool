@@ -4,16 +4,18 @@ import { useBsddLibraries } from "@/hooks/useBsdd";
 import { useIfcCatalog } from "@/hooks/useIfcCatalog";
 import { exportToIDSXML, parseIDSXML } from "@/lib/ids/xml";
 import type {
-  IDSPropertyRequirement,
   IDSRoot,
-  IDSSpecification,
   IDSSection,
+  IDSSpecification,
   IDSOptionality,
   IDSClassificationRequirement,
   IDSAttributeRequirement,
+  IDSPropertyRequirement,
   IDSEntityFacet,
   IDSMaterialRequirement,
+  IDSIfcVersion,
 } from "@/lib/ids/types";
+import { IDS_IFC_VERSIONS } from "@/lib/ids/types";
 
 function newProperty(): IDSPropertyRequirement {
   return {
@@ -26,14 +28,13 @@ function newProperty(): IDSPropertyRequirement {
 }
 
 function newClassification(): IDSClassificationRequirement {
-  return { id: `cls-${Math.random().toString(36).slice(2)}`, system: "", code: "", name: "" };
+  return { id: `cls-${Math.random().toString(36).slice(2)}`, system: "", value: "" } as IDSClassificationRequirement;
 }
 
 function newAttribute(): IDSAttributeRequirement {
   return {
     id: `attr-${Math.random().toString(36).slice(2)}`,
     name: "",
-    datatype: "",
     operator: "present",
     value: "",
   };
@@ -53,7 +54,7 @@ function newSpecification(): IDSSpecification {
     name: "",
     title: "New Specification",
     description: "",
-    ifcVersion: "IFC4",
+    ifcVersion: "IFC4" as IDSIfcVersion,
     optionality: "required",
     applicability: { ifcClass: "", entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [] },
     requirements: { entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [], cardinality: "required" },
@@ -73,18 +74,13 @@ type EntityTarget = { scope: "applicability" | "requirements"; sectionId: string
 type ClassifTarget = { scope: "applicability" | "requirements"; sectionId: string; specId: string; classifId: string } | null;
 
 type IdsContextValue = {
-  // Data
   ids: IDSRoot;
   setIds: React.Dispatch<React.SetStateAction<IDSRoot>>;
   xml: string;
   base: string;
-
-  // Catalogs
   libraries: ReturnType<typeof useBsddLibraries>["libraries"];
   ifcClasses: ReturnType<typeof useIfcCatalog>["classes"];
   ifcPredefs: ReturnType<typeof useIfcCatalog>["predefs"];
-
-  // Library selections
   selectedLibs: string[];
   setSelectedLibs: React.Dispatch<React.SetStateAction<string[]>>;
   classifLibs: string[];
@@ -93,8 +89,6 @@ type IdsContextValue = {
   setIncludeTestDicts: React.Dispatch<React.SetStateAction<boolean>>;
   dictQuery: string;
   setDictQuery: React.Dispatch<React.SetStateAction<string>>;
-
-  // Export/validate
   exportOpen: boolean;
   setExportOpen: (v: boolean) => void;
   xmlPreview: string;
@@ -103,8 +97,6 @@ type IdsContextValue = {
   setValidateOpen: (v: boolean) => void;
   validation: string;
   setValidation: (v: string) => void;
-
-  // bSDD pickers
   entityPickOpen: boolean;
   setEntityPickOpen: (v: boolean) => void;
   entityInitialQuery: string;
@@ -119,8 +111,6 @@ type IdsContextValue = {
   setClassifTarget: (t: ClassifTarget) => void;
   openEntityPicker: (initial: string, target: NonNullable<EntityTarget>) => void;
   openClassifPicker: (initial: string, target: NonNullable<ClassifTarget>) => void;
-
-  // Actions
   addSection: () => void;
   removeSection: (sid: string) => void;
   addSpecification: (sid: string) => void;
@@ -129,7 +119,7 @@ type IdsContextValue = {
   removeProperty: (sid: string, specId: string, pid: string) => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onExport: () => void;
-  downloadXML: () => void;
+  downloadIDS: () => void;
   onValidate: (ifcFile: File) => Promise<void>;
   applyEntityClassUriLookup: (
     scope: "applicability" | "requirements",
@@ -152,7 +142,7 @@ type IdsContextValue = {
     specId: string,
     classifId: string,
     system?: string,
-    code?: string,
+    codeOrValue?: string,
     name?: string
   ) => Promise<void>;
 };
@@ -162,7 +152,16 @@ const IdsContext = createContext<IdsContextValue | undefined>(undefined);
 export function IdsProvider({ children }: { children: React.ReactNode }) {
   const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
   const [ids, setIds] = useState<IDSRoot>({
-    header: { title: "Untitled IDS", description: "", author: "", date: "", version: "0.1.0" },
+    header: {
+      title: "Untitled IDS",
+      description: "",
+      author: "",
+      date: "",
+      version: "0.1.0",
+      copyright: "",
+      purpose: "",
+      milestone: "",
+    },
     sections: [newSection()],
   });
 
@@ -186,6 +185,21 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
 
   const xml = useMemo(() => exportToIDSXML(ids), [ids]);
 
+  function validateForExport(data: IDSRoot): string[] {
+    const issues: string[] = [];
+    if (!data.header.title || !data.header.title.trim()) issues.push("Header title is required.");
+    for (const s of data.sections || []) {
+      for (const sp of s.specifications || []) {
+        const nm = (sp.name ?? sp.title ?? '').trim();
+        if (!nm) issues.push('Specification name is required.');
+        if (!sp.ifcVersion || !(IDS_IFC_VERSIONS as readonly string[]).includes(sp.ifcVersion as any)) {
+          issues.push('Specification IFC version must be one of: ' + (IDS_IFC_VERSIONS as readonly string[]).join(', '));
+        }
+      }
+    }
+    return issues;
+  }
+
   const pickClassificationFromBsdd = useCallback(
     async (
       scope: "applicability" | "requirements",
@@ -193,11 +207,11 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
       specId: string,
       classifId: string,
       system?: string,
-      code?: string,
+      codeOrValue?: string,
       name?: string
     ) => {
       try {
-        const candidates = [code, name, `${name || ""} ${code || ""}`.trim(), system, `${system || ""} ${name || ""}`.trim()]
+        const candidates = [codeOrValue, name, `${name || ""} ${codeOrValue || ""}`.trim(), system, `${system || ""} ${name || ""}`.trim()]
           .map((v) => (v || "").trim())
           .filter((v, i, a) => v.length >= 2 && a.indexOf(v) === i);
         if (candidates.length === 0) return;
@@ -217,9 +231,8 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
         if (!hit) return;
 
         const cls = {
-          system: hit.dictionaryName || hit.dictionaryUri || system || "",
-          code: hit.referenceCode || code || "",
-          name: hit.name || name || "",
+          system: hit.dictionaryUri || hit.dictionaryName || system || "",
+          value: hit.referenceCode || hit.name || codeOrValue || "",
           uri: hit.uri || "",
         } as Partial<IDSClassificationRequirement> & { uri?: string };
 
@@ -327,24 +340,27 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
     try {
       const imported = await parseIDSXML(file);
       setIds(imported);
-      const specCount = imported.sections?.[0]?.specifications?.length ?? 0;
-      if (!specCount) alert("Imported file parsed, but no specifications were found.");
     } catch (err) {
       alert(`Failed to import IDS: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, []);
 
   const onExport = useCallback(() => {
+    const issues = validateForExport(ids);
+    if (issues.length) {
+      alert(issues.join("\n"));
+      return;
+    }
     setXmlPreview(xml);
     setExportOpen(true);
-  }, [xml]);
+  }, [xml, ids]);
 
-  const downloadXML = useCallback(() => {
+  const downloadIDS = useCallback(() => {
     const blob = new Blob([xml], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${ids.header.title || "ids"}.ids.xml`;
+    a.download = `${ids.header.title || "ids"}.ids`;
     a.click();
     URL.revokeObjectURL(url);
   }, [xml, ids.header.title]);
@@ -502,6 +518,8 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const onValidate = useCallback(async (ifcFile: File) => {
+    const issues = validateForExport(ids);
+    if (issues.length) { alert(issues.join("\n")); return; }
     const form = new FormData();
     form.append("idsXml", new Blob([xml], { type: "application/xml" }), "spec.ids");
     form.append("ifc", ifcFile);
@@ -509,7 +527,8 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
     const data = await res.json();
     setValidation(JSON.stringify(data, null, 2));
     setValidateOpen(true);
-  }, [xml, base]);
+  }, [xml, base, ids]);
+
 
   // bSDD picker states
   const [entityPickOpen, setEntityPickOpen] = useState(false);
@@ -577,14 +596,12 @@ export function IdsProvider({ children }: { children: React.ReactNode }) {
     removeProperty,
     onImport,
     onExport,
-    downloadXML,
+    downloadIDS,
     onValidate,
     applyEntityClassUriLookup,
     applyEntityPredefinedType,
     pickClassificationFromBsdd,
   };
-
-  // Note: For simplicity, picker states remain in page-level for now and will be lifted later if needed.
 
   return <IdsContext.Provider value={value}>{children}</IdsContext.Provider>;
 }

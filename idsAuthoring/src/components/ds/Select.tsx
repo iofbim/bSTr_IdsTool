@@ -5,7 +5,7 @@ type SelectProps = React.SelectHTMLAttributes<HTMLSelectElement> & {
   size?: "sm" | "md" | "lg";
 };
 
-export function Select({ children, size = "sm", className = "", ...props }: React.PropsWithChildren<SelectProps>) {
+export function Select({ children, size = "sm", className = "", title, ...props }: React.PropsWithChildren<SelectProps>) {
   const cls = [
     "ds-input",
     size === "sm" && "ds-input--sm",
@@ -16,7 +16,12 @@ export function Select({ children, size = "sm", className = "", ...props }: Reac
     .filter(Boolean)
     .join(" ");
   return (
-    <select className={cls} {...props}>
+    <select
+      className={cls}
+      title={title}
+      aria-label={(props as any)["aria-label"] ?? title}
+      {...props}
+    >
       {children}
     </select>
   );

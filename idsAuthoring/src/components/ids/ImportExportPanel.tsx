@@ -9,7 +9,7 @@ export default function ImportExportPanel() {
   const {
     onImport,
     onExport,
-    downloadXML,
+    downloadIDS,
     onValidate,
     exportOpen,
     setExportOpen,
@@ -32,9 +32,10 @@ export default function ImportExportPanel() {
           title="Import IDS XML"
         />
         <Button onClick={onExport}>Preview IDS</Button>
-        <Button variant="secondary" onClick={downloadXML}>
+        <Button variant="secondary" onClick={downloadIDS}>
           <Image src="/icons/IDS.png" alt="Download XML" width={40} height={20} />
         </Button>
+        {/* IDS XSD/rules validation removed per request */}
         <span className="text-sm text-gray-600">IFC:</span>
         <input
           className="max-w-[12rem]"

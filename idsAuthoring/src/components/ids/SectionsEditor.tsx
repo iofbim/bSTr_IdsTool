@@ -11,7 +11,10 @@ export default function SectionsEditor() {
   return (
     <>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Sections</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Sections</h2>
+          <span className="text-xs text-textDark font-light">Sections are introduced to help you to group parts of IDS specification and are not part of IDS schema</span>
+        </div>
         <Button onClick={addSection}>Add Section</Button>
       </div>
       {(ids.sections || []).map((section) => (

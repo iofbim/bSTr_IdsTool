@@ -41,6 +41,7 @@ next-env.d.ts
 # local docs/notes
 endofday.md
 /IDS
+/IDS-Audit-tool
 /bSDD
 /iofbim_stack
 /bsdd_gql.md

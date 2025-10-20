@@ -117,6 +117,9 @@ export interface IDSHeader {
   author?: string;
   date?: string; // ISO date
   version?: string;
+  copyright?: string;
+  purpose?: string;
+  milestone?: string;
 }
 
 export interface IDSRoot {

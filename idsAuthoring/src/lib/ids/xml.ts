@@ -329,19 +329,24 @@ function toNsEntity(e: IDSEntityFacet): Record<string, unknown> {
 export function exportToIDSXML(idsData: IDSRoot): string {
   const allSpecs: IDSSpecification[] = (idsData.sections || []).flatMap((s) => s.specifications || []);
 
-  const info: Record<string, unknown> = {
-    "ids:title": idsData.header.title || "Untitled IDS",
-    ...(idsData.header.description ? { "ids:description": idsData.header.description } : {}),
-    ...(idsData.header.version ? { "ids:version": idsData.header.version } : {}),
-    ...(idsData.header.date ? { "ids:date": idsData.header.date } : {}),
-  };
+  // ids:info must respect xs:sequence order in XSD
+  // order: title, copyright, version, description, author, date, purpose, milestone
+  const info: Record<string, unknown> = {};
+  (info as any)["ids:title"] = idsData.header.title || "Untitled IDS";
+  if (idsData.header.copyright) {
+    (info as any)["ids:copyright"] = idsData.header.copyright;
+  } else if (idsData.header.author && !/@/.test(idsData.header.author)) {
+    (info as any)["ids:copyright"] = idsData.header.author;
+  }
+  if (idsData.header.version) (info as any)["ids:version"] = idsData.header.version;
+  if (idsData.header.description) (info as any)["ids:description"] = idsData.header.description;
   // author must be an email per XSD; include only if it looks like one
   if (idsData.header.author && /@/.test(idsData.header.author)) {
     (info as any)["ids:author"] = idsData.header.author;
-  } else if (idsData.header.author) {
-    // best-effort put non-email author into copyright
-    (info as any)["ids:copyright"] = idsData.header.author;
   }
+  if (idsData.header.date) (info as any)["ids:date"] = idsData.header.date;
+  if (idsData.header.purpose) (info as any)["ids:purpose"] = idsData.header.purpose;
+  if (idsData.header.milestone) (info as any)["ids:milestone"] = idsData.header.milestone;
 
   const specs = allSpecs.map((spec, i) => {
     const occurs = optionalityToOccurs(spec.optionality);
@@ -359,15 +364,17 @@ export function exportToIDSXML(idsData: IDSRoot): string {
       if (ent) (applicability as any)["ids:entity"] = toNsEntity(ent);
 
       if (spec.applicability.partOf && spec.applicability.partOf.length) {
+        // sequence requires entity child inside partOf, relation as attribute
         (applicability as any)["ids:partOf"] = spec.applicability.partOf.map((p) => ({
           ...(p.relation ? { "@_relation": p.relation } : {}),
           "ids:entity": toNsEntity(p.entity || { id: "ent", ifcClass: "IFCBUILDINGELEMENT" }),
         }));
       }
       if (spec.applicability.classifications && spec.applicability.classifications.length) {
+        // sequence requires value first, then system
         (applicability as any)["ids:classification"] = spec.applicability.classifications.map((c) => ({
-          "ids:system": idsValue(c.system || ""),
           ...(c.value ? { "ids:value": opToIdsValue("equals", c.value) } : {}),
+          "ids:system": idsValue(c.system || ""),
         }));
       }
       if (spec.applicability.attributes && spec.applicability.attributes.length) {
@@ -396,11 +403,13 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     if (spec.requirements?.entities && spec.requirements.entities.length) {
       (requirements as any)["ids:entity"] = spec.requirements.entities.map((e) => ({
         ...toNsEntity(e),
+        ...(e.instructions ? { "@_instructions": e.instructions } : {}),
       }));
     }
     if (spec.requirements?.partOf && spec.requirements.partOf.length) {
       (requirements as any)["ids:partOf"] = spec.requirements.partOf.map((p) => ({
-        ...(p.relation ? { "@_cardinality": p.optionality === "prohibited" ? "prohibited" : "required" } : {}),
+        // simpleCardinality: required | prohibited; default required
+        ...(p.optionality === "prohibited" ? { "@_cardinality": "prohibited" } : {}),
         ...(p.instructions ? { "@_instructions": p.instructions } : {}),
         ...(p.relation ? { "@_relation": p.relation } : {}),
         "ids:entity": toNsEntity(p.entity || { id: "ent", ifcClass: "IFCBUILDINGELEMENT" }),
@@ -411,8 +420,9 @@ export function exportToIDSXML(idsData: IDSRoot): string {
         "@_cardinality": c ? (c as any).optionality || "required" : "required",
         ...(c.uri ? { "@_uri": c.uri } : {}),
         ...(c.instructions ? { "@_instructions": c.instructions } : {}),
-        "ids:system": idsValue(c.system || ""),
+        // sequence: value then system
         ...(c.value ? { "ids:value": opToIdsValue((c.operator as any) || "equals", c.value) } : {}),
+        "ids:system": idsValue(c.system || ""),
       }));
     }
     if (spec.requirements?.attributes && spec.requirements.attributes.length) {
@@ -471,9 +481,8 @@ export function exportToIDSXML(idsData: IDSRoot): string {
   return builder.build(xmlObject);
 }
 
-export async function parseIDSXML(file: File): Promise<IDSRoot> {
-  const text = await file.text();
-  const parsed = parser.parse(text) as unknown;
+export function parseIDSXmlText(xmlText: string): IDSRoot {
+  const parsed = parser.parse(xmlText) as unknown;
   // First, try official IDS 1.0 namespaced format (ids:ids ...)
   const idsNs = pickObject(parsed, "ids:ids") ?? pickObject(parsed, "ids");
   if (idsNs) {
@@ -527,13 +536,14 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
       const classNodes = nsArray<Record<string, unknown>>(reqsNode, "classification");
       const classifications: IDSClassificationRequirement[] = classNodes.map((c, cidx) => {
         const { value } = extractValueAndOperator(nsGet(c, "value"));
-        const code = Array.isArray(value) ? value[0] : typeof value === "string" ? value : undefined;
+        const v = Array.isArray(value) ? value[0] : typeof value === "string" ? value : undefined;
         return {
           id: cryptoRandomId(`cls-${idx}-${cidx}`),
           system: nsSimple(c, "system") || "",
-          code: code,
+          value: v,
           uri: (c as any)?.["@_uri"] ? String((c as any)?.["@_uri"]) : undefined,
           instructions: (c as any)?.["@_instructions"] ? String((c as any)?.["@_instructions"]) : undefined,
+          optionality: ((c as any)?.["@_cardinality"] as any) || undefined,
         } as IDSClassificationRequirement;
       });
 
@@ -570,13 +580,79 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
         } as IDSPropertyRequirement;
       });
 
+      const appClassifications = nsArray<Record<string, unknown>>(applicabilityNode, "classification").map((c, cidx) => {
+        const { value } = extractValueAndOperator(nsGet(c, "value"));
+        const v = Array.isArray(value) ? value[0] : typeof value === "string" ? value : undefined;
+        return {
+          id: cryptoRandomId(`acls-${idx}-${cidx}`),
+          system: nsSimple(c, "system") || "",
+          value: v,
+        } as IDSClassificationRequirement;
+      });
+
+      const appMaterials = nsArray<Record<string, unknown>>(applicabilityNode, "material").map((m, midx) => {
+        const { operator, value } = extractValueAndOperator(nsGet(m, "value"));
+        return {
+          id: cryptoRandomId(`amat-${idx}-${midx}`),
+          operator: operator as any,
+          value: (Array.isArray(value) ? value[0] : (value as any)) as any,
+          optionality: occursFromAttrs(m),
+        } as IDSMaterialRequirement;
+      });
+
+      const appPartOf = nsArray<Record<string, unknown>>(applicabilityNode, "partOf").map((p, pidx) => {
+        const entity = pickObject(nsGet(p, "entity"));
+        return {
+          id: cryptoRandomId(`apart-${idx}-${pidx}`),
+          relation: ((p as any)?.["@_relation"] as any) || undefined,
+          entity: entity
+            ? ({
+                id: cryptoRandomId(`apent-${idx}-${pidx}`),
+                ifcClass: nsFirstValueText(entity, "name"),
+                predefinedType: nsFirstValueText(entity, "predefinedType"),
+              } as IDSEntityFacet)
+            : undefined,
+          optionality: occursFromAttrs(p),
+        } as IDSPartOfFacet;
+      });
+
       // Requirements: entities if any
       const reqEntities = nsArray<Record<string, unknown>>(reqsNode, "entity").map((e, eidx) => ({
         id: cryptoRandomId(`rent-${idx}-${eidx}`),
         ifcClass: nsFirstValueText(e, "name"),
         predefinedType: nsFirstValueText(e, "predefinedType"),
         optionality: occursFromAttrs(e),
+        instructions: (e as any)?.["@_instructions"] ? String((e as any)?.["@_instructions"]) : undefined,
       } as IDSEntityFacet));
+
+      const reqPartOf = nsArray<Record<string, unknown>>(reqsNode, "partOf").map((p, pidx) => {
+        const entity = pickObject(nsGet(p, "entity"));
+        return {
+          id: cryptoRandomId(`rpart-${idx}-${pidx}`),
+          relation: ((p as any)?.["@_relation"] as any) || undefined,
+          optionality: ((p as any)?.["@_cardinality"] as any) || undefined,
+          instructions: (p as any)?.["@_instructions"] ? String((p as any)?.["@_instructions"]) : undefined,
+          entity: entity
+            ? ({
+                id: cryptoRandomId(`rpent-${idx}-${pidx}`),
+                ifcClass: nsFirstValueText(entity, "name"),
+                predefinedType: nsFirstValueText(entity, "predefinedType"),
+              } as IDSEntityFacet)
+            : undefined,
+        } as IDSPartOfFacet;
+      });
+
+      const reqMaterials = nsArray<Record<string, unknown>>(reqsNode, "material").map((m, midx) => {
+        const { operator, value } = extractValueAndOperator(nsGet(m, "value"));
+        return {
+          id: cryptoRandomId(`rmat-${idx}-${midx}`),
+          operator: operator as any,
+          value: (Array.isArray(value) ? value[0] : (value as any)) as any,
+          optionality: ((m as any)?.["@_cardinality"] as any) || occursFromAttrs(m),
+          uri: (m as any)?.["@_uri"] ? String((m as any)?.["@_uri"]) : undefined,
+          instructions: (m as any)?.["@_instructions"] ? String((m as any)?.["@_instructions"]) : undefined,
+        } as IDSMaterialRequirement;
+      });
 
       const specItem: IDSSpecification = {
         id: cryptoRandomId(`spec-${idx}`),
@@ -594,9 +670,13 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
           entities: appEntities,
           attributes: appAttributes,
           properties: appProperties,
+          classifications: appClassifications,
+          materials: appMaterials,
+          partOf: appPartOf,
         },
         requirements: {
           entities: reqEntities,
+          partOf: reqPartOf,
           classifications,
           attributes: attributes.map((a) => ({ ...a })),
           properties: propNodes.map((p, i2) => {
@@ -604,6 +684,7 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
             const card = (p as any)?.["@_cardinality"] as any;
             return { ...base, optionality: (card as any) || base.optionality } as IDSPropertyRequirement;
           }),
+          materials: reqMaterials,
         },
       };
       return specItem;
@@ -846,6 +927,11 @@ export async function parseIDSXML(file: File): Promise<IDSRoot> {
     },
     sections: [section],
   };
+}
+
+export async function parseIDSXML(file: File): Promise<IDSRoot> {
+  const text = await file.text();
+  return parseIDSXmlText(text);
 }
 
 function cryptoRandomId(prefix = "id"): string {

@@ -1,0 +1,21 @@
+  }const onExport = useCallback(() => {\r\n    const issues = validateForExport(ids);\r\n    if (issues.length) { alert(issues.join("\n")); return; }\r\n    setXmlPreview(xml);\r\n    setExportOpen(true);\r\n  }, [xml, ids]);
+
+  const downloadXML = useCallback(() => {
+    const blob = new Blob([xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${ids.header.title || "ids"}.ids.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [xml, ids.header.title]);
+
+  const applyEntityClassUriLookup = useCallback(
+    async (
+      scope: "applicability" | "requirements",
+      sectionId: string,
+      specId: string,
+      entityId: string,
+      ifcClass: string | undefined
+    ) => {
+      const cls = (ifcClass || "").trim();
