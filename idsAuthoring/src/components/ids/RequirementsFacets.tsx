@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element */
 "use client";
 /* Requirements facets aligned with IDS/Schema/ids.xsd (requirementsType)
    - entity (extends entityType): instructions?; cardinality not applicable (always required)
@@ -66,12 +66,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
           {(req.entities || []).map((e) => (
             <div key={e.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">entity</div></div>
-              <div className="relative pt-7 pr-7">
-              <Button variant="danger" className="text-xs absolute right-1 top-1 h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).filter((ee) => ee.id !== e.id) } } : sp) } : s),
-              }))} aria-label="Remove entity" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr] gap-2">
+              <div className="relative">
+            <div className="grid grid-cols-1 md:grid-cols-[3fr_3fr_auto] gap-2">
               <div>
                 <div className="mb-1">
                   <button
@@ -111,6 +107,20 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
                   </datalist>
                 )}
               </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="danger"
+                  className="text-xs h-7 w-7 p-0 rounded-md leading-none"
+                  onClick={() => setIds((prev) => ({
+                    ...prev,
+                    sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, entities: (sp.requirements.entities || []).filter((ee) => ee.id !== e.id) } } : sp) } : s),
+                  }))}
+                  aria-label="Remove entity"
+                  title="Remove"
+                >
+                  x
+                </Button>
+              </div>
             </div>
               <Input placeholder="Instructions (optional)" value={e.instructions || ''} onChange={(ev) => setIds((prev) => ({
                 ...prev,
@@ -126,11 +136,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
             <div key={c.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">classification</div></div>
               <div className="relative">
-              <Button variant="accent" className="text-xs absolute right-1 top-1 px-2 py-0 leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
-              }))} aria-label="Remove classification" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_1fr] items-center gap-2 ">
+              
+            <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_1fr_auto] items-center gap-2 ">
               <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => openClassifPicker(c.value || "", { scope: "requirements", sectionId, specId, classifId: c.id })}>
                 <Image src="/icons/bSDD.png" alt="Pick from bSDD" width={48} height={24} />
               </button>
@@ -145,7 +152,9 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
               <CardinalitySelect title="Classification cardinality" value={c.optionality} onChange={(v) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).map((cc) => cc.id === c.id ? { ...cc, optionality: v } : cc) } } : sp) } : s),
-              }))} />
+              }))} />              <div className="flex justify-end">
+                <Button variant="danger" className="text-xs h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({ ...prev, sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, classifications: (sp.requirements.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s), })) } aria-label="Remove classification" title="Remove">x</Button>
+              </div>
             </div>
               <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr] gap-2 items-center">
               <Input placeholder="URI (optional)" value={c.uri || ''} onChange={(ev) => setIds((prev) => ({
@@ -167,11 +176,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
             <div key={a.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">attribute</div></div>
               <div className="relative">
-              <Button variant="accent" className="text-xs absolute right-1 top-1 px-2 py-0 leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
-              }))} aria-label="Remove attribute" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr] items-center gap-2">
+              
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] items-center gap-2">
               <Input placeholder="Attribute Name" value={a.name} onChange={(ev) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, name: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
@@ -183,7 +189,9 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
               <CardinalitySelect title="Attribute cardinality" value={a.optionality} onChange={(v) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).map((aa) => aa.id === a.id ? { ...aa, optionality: v } : aa) } } : sp) } : s),
-              }))} />
+              }))} />              <div className="flex justify-end">
+                <Button variant="danger" className="text-xs h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({ ...prev, sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, attributes: (sp.requirements.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s), })) } aria-label="Remove attribute" title="Remove">x</Button>
+              </div>
             </div>
             <Input placeholder="Instructions (optional)" value={a.instructions || ''} onChange={(ev) => setIds((prev) => ({
               ...prev,
@@ -199,11 +207,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
             <div key={p.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">property</div></div>
               <div className="relative">
-              <Button variant="accent" className="text-xs absolute right-1 top-1 px-2 py-0 leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, properties: (sp.requirements.properties || []).filter((pp) => pp.id !== p.id) } } : sp) } : s),
-              }))} aria-label="Remove property" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr] gap-2 items-center">
+              
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-2 items-center">
               <Input placeholder="Property Set" value={p.propertySet || ''} onChange={(e) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, properties: (sp.requirements.properties || []).map((pp) => pp.id === p.id ? { ...pp, propertySet: (e.target as HTMLInputElement).value } : pp) } } : sp) } : s),
@@ -215,7 +220,9 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
               <CardinalitySelect title="Property cardinality" value={p.optionality} onChange={(v) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, properties: (sp.requirements.properties || []).map((pp) => pp.id === p.id ? { ...pp, optionality: v } : pp) } } : sp) } : s),
-              }))} />
+              }))} />              <div className="flex justify-end">
+                <Button variant="danger" className="text-xs h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({ ...prev, sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, properties: (sp.requirements.properties || []).filter((pp) => pp.id !== p.id) } } : sp) } : s), })) } aria-label="Remove property" title="Remove">x</Button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_2fr] gap-2 items-center">
               <Input placeholder="Value (optional)" value={(p.value as string) || ''} onChange={(e) => setIds((prev) => ({
@@ -245,11 +252,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
             <div key={m.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">material</div></div>
               <div className="relative">
-              <Button variant="accent" className="text-xs absolute right-1 top-1 px-2 py-0 leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
-              }))} aria-label="Remove material" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-2 items-center">
+              
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_auto] gap-2 items-center">
               <Input placeholder="Material" value={m.value || ''} onChange={(e) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, value: (e.target as HTMLInputElement).value } : mm) } } : sp) } : s),
@@ -257,7 +261,9 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
               <CardinalitySelect title="Material cardinality" value={m.optionality} onChange={(v) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).map((mm) => mm.id === m.id ? { ...mm, optionality: v } : mm) } } : sp) } : s),
-              }))} />
+              }))} />              <div className="flex justify-end">
+                <Button variant="danger" className="text-xs h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({ ...prev, sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, materials: (sp.requirements.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s), })) } aria-label="Remove material" title="Remove">x</Button>
+              </div>
             </div>
             <Input placeholder="URI (optional)" value={m.uri || ''} onChange={(e) => setIds((prev) => ({
               ...prev,
@@ -277,11 +283,8 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
             <div key={po.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">part of</div></div>
               <div className="relative">
-              <Button variant="accent" className="text-xs absolute right-1 top-1 px-2 py-0 leading-none" onClick={() => setIds((prev) => ({
-                ...prev,
-                sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
-              }))} aria-label="Remove part of" title="Remove">×</Button>
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr] gap-2 items-center">
+              
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-2 items-center">
               <Select title="Part Of relation" aria-label="Part Of relation" value={po.relation || ''} onChange={(e) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, relation: (e.target as HTMLSelectElement).value as any } : pp) } } : sp) } : s),
@@ -298,7 +301,9 @@ export default function RequirementsFacets({ sectionId, specId }: { sectionId: s
               <CardinalitySelect title="Part Of cardinality" value={po.optionality as IDSOptionality} onChange={(v) => setIds((prev) => ({
                 ...prev,
                 sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).map((pp) => pp.id === po.id ? { ...pp, optionality: v } : pp) } } : sp) } : s),
-              }))} />
+              }))} />              <div className="flex justify-end">
+                <Button variant="danger" className="text-xs h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({ ...prev, sections: prev.sections.map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, requirements: { ...sp.requirements, partOf: (sp.requirements.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s), })) } aria-label="Remove part of" title="Remove">x</Button>
+              </div>
             </div>
             <Input placeholder="Instructions (optional)" value={po.instructions || ''} onChange={(e) => setIds((prev) => ({
               ...prev,

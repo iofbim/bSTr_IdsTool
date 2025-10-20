@@ -174,24 +174,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
             <div key={e.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">entity</div></div>
               <div className="relative">
-                <Button
-                  variant="danger"
-                  className="hidden"
-                  onClick={() => setIds((prev) => ({
-                    ...prev,
-                    sections: (prev.sections || []).map((s) => s.id === sectionId ? {
-                      ...s,
-                      specifications: s.specifications.map((sp) => sp.id === specId ? {
-                        ...sp,
-                        applicability: { ...sp.applicability!, entities: [] },
-                      } : sp),
-                    } : s),
-                  }))}
-                  aria-label="Remove entity"
-                  title="Remove"
-                >
-                  Ã—
-                </Button>
               <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_auto] items-center gap-2">
                 <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => openEntityPicker(e.ifcClass || "", { scope: "applicability", sectionId, specId, entityId: e.id })}>
                   <Image src="/icons/bSDD.png" alt="Pick from bSDD" width={48} height={24} />
@@ -254,18 +236,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
             <div key={c.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none overflow-hidden">classification</div></div>
               <div className="relative">
-                <Button
-                  variant="danger"
-                  className="hidden"
-                  onClick={() => setIds((prev) => ({
-                    ...prev,
-                    sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, classifications: (sp.applicability?.classifications || []).filter((cc) => cc.id !== c.id) } } : sp) } : s),
-                  }))}
-                  aria-label="Remove classification"
-                  title="Remove"
-                >
-                  Ã—
-                </Button>
               <div className="grid grid-cols-1 md:grid-cols-[auto_2fr_2fr_auto] items-center gap-2 ">
                 <button type="button" className="p-0 h-6 w-12 rounded border flex items-center justify-center" title="Pick from bSDD" onClick={() => openClassifPicker(c.value || "", { scope: "applicability", sectionId, specId, classifId: c.id })}>
                   <Image src="/icons/bSDD.png" alt="Pick from bSDD" width={48} height={24} />
@@ -320,18 +290,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
             <div key={a.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">attribute</div></div>
               <div className="relative">
-                <Button
-                  variant="danger"
-                  className="hidden"
-                  onClick={() => setIds((prev) => ({
-                    ...prev,
-                    sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
-                  }))}
-                  aria-label="Remove attribute"
-                  title="Remove"
-                >
-                  Ã—
-                </Button>
               <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_auto] items-center gap-2">
                 <Input placeholder="Attribute Name" value={a.name} onChange={(ev) => setIds((prev) => ({
                   ...prev,
@@ -419,33 +377,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
             <div key={m.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">material</div></div>
               <div className="relative">
-                <Button
-                  variant="danger"
-                  className="hidden"
-                  onClick={() => setIds((prev) => ({
-                    ...prev,
-                    sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
-                  }))}
-                  aria-label="Remove material"
-                  title="Remove"
-                >
-                  Ã—
-                </Button>
               <div className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-2 items-center">
-                <div className="flex justify-end">
-                  <Button
-                    variant="danger"
-                    className="text-xs h-7 w-7 p-0 rounded-md leading-none"
-                    onClick={() => setIds((prev) => ({
-                      ...prev,
-                      sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
-                    }))}
-                    aria-label="Remove material"
-                    title="Remove"
-                  >
-                    ×
-                  </Button>
-                </div>
                 <Input
                   placeholder="Material (optional)"
                   value={m.value || ''}
@@ -477,6 +409,20 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                     }))
                   }
                 />
+                <div className="flex justify-end">
+                  <Button
+                    variant="danger"
+                    className="text-xs h-7 w-7 p-0 rounded-md leading-none"
+                    onClick={() => setIds((prev) => ({
+                      ...prev,
+                      sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
+                    }))}
+                    aria-label="Remove material"
+                    title="Remove"
+                  >
+                    ×
+                  </Button>
+                </div>
                 
               </div>
               </div>
@@ -488,18 +434,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
             <div key={po.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
               <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">part of</div></div>
               <div className="relative">
-                <Button
-                  variant="accent"
-                  className="hidden"
-                  onClick={() => setIds((prev) => ({
-                    ...prev,
-                    sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, partOf: (sp.applicability?.partOf || []).filter((pp) => pp.id !== po.id) } } : sp) } : s),
-                  }))}
-                  aria-label="Remove part of"
-                  title="Remove"
-                >
-                  Ã—
-                </Button>
               <div className="grid grid-cols-1 md:grid-cols-[2fr_2fr_auto] gap-2 items-center">
                 <Select title="Part Of relation" aria-label="Part Of relation" value={po.relation || ''} onChange={(e) => setIds((prev) => ({
                   ...prev,
@@ -591,5 +525,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
     </div>
   );
 }
+
 
 
