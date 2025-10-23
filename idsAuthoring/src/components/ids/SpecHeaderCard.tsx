@@ -126,8 +126,8 @@ export default function SpecHeaderCard({ sectionId, spec }: { sectionId: string;
           ))}
         </select>
         <div className="flex justify-end">
-          <Button variant="accent" onClick={() => removeSpecification(sectionId, spec.id)}>
-            Remove
+          <Button variant="danger" className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none" onClick={() => removeSpecification(sectionId, spec.id)}>
+            X
           </Button>
         </div>
       </div>

@@ -15,7 +15,6 @@ import { IDS_RELATIONS } from "@/lib/ids/types";
 import { useIds, newEntity, newClassification, newAttribute, newProperty, newMaterial } from "@/contexts/IdsContext";
 import Image from "next/image";
 import AttributeHelper from "@/components/bsdd/AttributeHelper";
-import RestrictionMenu from "@/components/ids/RestrictionMenu";
 
 export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: string; specId: string }) {
   const { ids, setIds, ifcClasses, ifcPredefs, openEntityPicker, openClassifPicker, selectedLibs } = useIds();
@@ -26,7 +25,6 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
     <div className="mt-3 grid gap-4">
       <div className="ml-4">
         <h4 className="font-medium">Applicability</h4>
-        {(() => { try { console.debug('[ApplicabilityFacets] render', { sectionId, specId, selectedLibs, entity: (app.entities||[])[0] ? { ifcClass: (app.entities||[])[0]?.ifcClass, uri: (app.entities||[])[0]?.uri } : null }); } catch(_){} return null; })()}
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-gray-700">Add:</span>
@@ -218,7 +216,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                   <div className="flex justify-end">
                     <Button
                       variant="danger"
-                      className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none"
+                      className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none"
                       onClick={() => setIds((prev) => ({
                         ...prev,
                         sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, entities: [] } } : sp) } : s),
@@ -254,7 +252,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                 <div className="flex justify-end">
                   <Button
                     variant="danger"
-                    className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none"
+                    className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none"
                     onClick={() => setIds((prev) => ({
                       ...prev,
                       sections: (prev.sections || []).map((s) =>
@@ -335,7 +333,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                   sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).map((aa) => aa.id === a.id ? { ...aa, value: (ev.target as HTMLInputElement).value } : aa) } } : sp) } : s),
                 }))} />
                 <div className="flex justify-end">
-                  <Button variant="danger" className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({
+                  <Button variant="danger" className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none" onClick={() => setIds((prev) => ({
                     ...prev,
                     sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, attributes: (sp.applicability?.attributes || []).filter((aa) => aa.id !== a.id) } } : sp) } : s),
                   }))} aria-label="Remove attribute" title="Remove">X</Button>
@@ -363,7 +361,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                 <div className="flex justify-end">
                   <Button
                     variant="danger"
-                    className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none"
+                    className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none"
                     onClick={() => setIds((prev) => ({
                       ...prev,
                       sections: (prev.sections || []).map((s) =>
@@ -410,7 +408,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
           {/* Materials */}
           {(app.materials || []).map((m) => (
             <div key={m.id} className="ds-facet mt-2 grid grid-cols-[12px_1fr] gap-2">
-              <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">mat...</div></div>
+              <div className="w-[12px] overflow-hidden flex items-stretch justify-center"><div className="inline-block leading-none text-[8px] text-gray-500 uppercase tracking-wide rotate-180 [writing-mode:vertical-rl] text-right select-none">material</div></div>
               <div className="relative">
               <div className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-2 items-center">
                 <Input
@@ -447,7 +445,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                 <div className="flex justify-end">
                   <Button
                     variant="danger"
-                    className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none"
+                    className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none"
                     onClick={() => setIds((prev) => ({
                       ...prev,
                       sections: (prev.sections || []).map((s) => s.id === sectionId ? { ...s, specifications: s.specifications.map((sp) => sp.id === specId ? { ...sp, applicability: { ...sp.applicability!, materials: (sp.applicability?.materials || []).filter((mm) => mm.id !== m.id) } } : sp) } : s),
@@ -519,7 +517,7 @@ export default function ApplicabilityFacets({ sectionId, specId }: { sectionId: 
                 <div className="flex justify-end">
                   <Button
                     variant="danger"
-                    className="text-xs font-bold h-6 w-6 p-0 rounded-md leading-none"
+                    className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none"
                     onClick={() =>
                       setIds((prev) => ({
                         ...prev,

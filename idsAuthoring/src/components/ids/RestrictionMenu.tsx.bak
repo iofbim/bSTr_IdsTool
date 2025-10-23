@@ -1,0 +1,73 @@
+﻿"use client";
+import React, { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ds/Button";
+
+type Op = "present" | "equals" | "contains" | "matches" | "in" | "bounds" | "length" | undefined;
+
+export default function RestrictionMenu({
+  operator,
+  onChange,
+  title = "Restrictions",
+}: {
+  operator?: Op;
+  onChange: (op: Exclude<Op, undefined>) => void;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const label = (() => {
+    switch (operator) {
+      case "equals": return "=";
+      case "contains": return "∋";
+      case "matches": return "∼";
+      case "in": return "∈";
+      case "bounds": return "≦≧";
+      case "length": return "len";
+      default: return "∗"; // present / default
+    }
+  })();
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button className="h-7 px-2 text-xs" variant="secondary" title={title} onClick={() => setOpen((v) => !v)}>
+        {label}
+      </Button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-36 bg-white border rounded shadow">
+          {[
+            ["present", "Present"],
+            ["equals", "Equals"],
+            ["contains", "Contains"],
+            ["matches", "Pattern"],
+            ["in", "Enumeration"],
+            ["bounds", "Bounds"],
+            ["length", "Length"],
+          ].map(([val, text]) => (
+            <button
+              key={val}
+              type="button"
+              className="w-full text-left text-sm px-2 py-1 hover:bg-gray-100"
+              onClick={() => {
+                setOpen(false);
+                onChange(val as Exclude<Op, undefined>);
+              }}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+

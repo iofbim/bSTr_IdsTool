@@ -32,6 +32,11 @@ export interface IDSEntityFacet {
   id: UUID;
   ifcClass?: string; // e.g., "IfcWall"
   predefinedType?: string; // e.g., "SHEAR"
+  // optional restrictions for name and predefinedType
+  nameOperator?: "equals" | "contains" | "in" | "matches" | "present" | "bounds" | "length";
+  nameValue?: string | string[];
+  predefOperator?: "equals" | "contains" | "in" | "matches" | "present" | "bounds" | "length";
+  predefValue?: string | string[];
   optionality?: IDSOptionality; // for requirements
   uri?: string; // allowed on requirements: entity
   instructions?: string; // allowed on requirements: entity
@@ -78,7 +83,8 @@ export interface IDSApplicability {
   partOf?: IDSPartOfFacet[];
 }
 
-export type IDSOptionality = "required" | "optional" | "prohibited";
+// Cardinality/optionality across facets. "none" means: unspecified in export.
+export type IDSOptionality = "none" | "required" | "optional" | "prohibited";
 
 export interface IDSSpecification {
   id: UUID;

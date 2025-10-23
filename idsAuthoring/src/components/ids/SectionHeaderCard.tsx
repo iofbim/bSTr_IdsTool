@@ -21,8 +21,8 @@ export default function SectionHeaderCard({ sectionId }: { sectionId: string }) 
             }))
           }
         />
-        <Button variant="accent" onClick={() => removeSection(sectionId)}>
-          Remove Section
+        <Button variant="danger" className="text-xs font-bold h-7 w-7 p-0 rounded-md leading-none" onClick={() => removeSection(sectionId)}>
+          X
         </Button>
       </div>
       <Textarea

@@ -29,7 +29,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${raleway.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${montserrat.variable} ${raleway.variable} bg-customBg text-textDark`}
+      suppressHydrationWarning
+    >
       <body className="bg-customBg text-textDark antialiased font-sans">
         <LanguageProvider>
           <IdsProvider>

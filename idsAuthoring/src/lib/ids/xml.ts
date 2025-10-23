@@ -1,4 +1,4 @@
-// References
+﻿// References
 // - IDS/Schema/ids.xsd (official IDS 1.0 XSD)
 // - IDS/Documentation/ImplementersDocumentation (test cases and guidance)
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
@@ -153,7 +153,7 @@ function toPropertyNode(prop: IDSPropertyRequirement): IDSXMLProperty {
   if (prop.datatype) node.Property.Datatype = prop.datatype;
   if (prop.operator) node.Property.Operator = prop.operator;
   if (prop.value !== undefined) node.Property.Value = Array.isArray(prop.value) ? prop.value.join(", ") : String(prop.value);
-  if (prop.optionality) {
+  if (prop.optionality && prop.optionality !== "none") {
     const occ = optionalityToOccurs(prop.optionality);
     node.Property["@_minOccurs"] = occ.min;
     node.Property["@_maxOccurs"] = occ.max;
@@ -165,8 +165,9 @@ function toEntityNode(e: IDSEntityFacet, opt?: IDSOptionality): IDSXMLEntity {
   const node: IDSXMLEntity = { Entity: {} };
   if (e.ifcClass) node.Entity.IfcClass = e.ifcClass;
   if (e.predefinedType) node.Entity.PredefinedType = e.predefinedType;
-  if (opt || e.optionality) {
-    const occ = optionalityToOccurs((opt || e.optionality) as IDSOptionality);
+  const effEntOpt = (opt || e.optionality) as IDSOptionality | undefined;
+  if (effEntOpt && effEntOpt !== "none") {
+    const occ = optionalityToOccurs(effEntOpt as IDSOptionality);
     node.Entity["@_minOccurs"] = occ.min;
     node.Entity["@_maxOccurs"] = occ.max;
   }
@@ -178,7 +179,7 @@ function toAttributeNode(a: IDSAttributeRequirement): IDSXMLAttribute {
   if (a.datatype) node.Attribute.Datatype = a.datatype;
   if (a.operator) node.Attribute.Operator = a.operator as any;
   if (a.value !== undefined) node.Attribute.Value = Array.isArray(a.value) ? a.value.join(", ") : String(a.value);
-  if (a.optionality) {
+  if (a.optionality && a.optionality !== "none") {
     const occ = optionalityToOccurs(a.optionality);
     node.Attribute["@_minOccurs"] = occ.min;
     node.Attribute["@_maxOccurs"] = occ.max;
@@ -190,7 +191,7 @@ function toMaterialNode(m: IDSMaterialRequirement): IDSXMLMaterial {
   const node: IDSXMLMaterial = { Material: {} };
   if (m.operator) node.Material.Operator = m.operator as any;
   if (m.value !== undefined) node.Material.Value = Array.isArray(m.value) ? m.value.join(", ") : String(m.value);
-  if (m.optionality) {
+  if (m.optionality && m.optionality !== "none") {
     const occ = optionalityToOccurs(m.optionality);
     node.Material["@_minOccurs"] = occ.min;
     node.Material["@_maxOccurs"] = occ.max;
@@ -202,7 +203,7 @@ function toPartOfNode(p: IDSPartOfFacet): IDSXMLPartOf {
   const node: IDSXMLPartOf = { PartOf: {} } as any;
   if (p.relation) node.PartOf.Relation = p.relation;
   if (p.entity) node.PartOf.Entity = toEntityNode(p.entity).Entity;
-  if (p.optionality) {
+  if (p.optionality && p.optionality !== "none") {
     const occ = optionalityToOccurs(p.optionality);
     node.PartOf["@_minOccurs"] = occ.min;
     node.PartOf["@_maxOccurs"] = occ.max;
@@ -314,15 +315,56 @@ function opToIdsValue(op?: IDSPropertyRequirement["operator"] | IDSAttributeRequ
   if (op === "in") return idsValue(undefined, Array.isArray(value) ? value as string[] : [String(value)]);
   if (op === "matches") return idsValue(undefined, undefined, String(value));
   if (op === "contains") return idsValue(undefined, undefined, `.*${escapeRegexLiteralForContains(String(value))}.*`);
+  if (op === "length") {
+    const s = String(value || "").trim();
+    if (/^\d+$/.test(s)) {
+      return {
+        "xs:restriction": {
+          "@_base": "xs:string",
+          "xs:length": { "@_value": s },
+        },
+      } as Record<string, unknown>;
+    }
+    const parts = s.split("..");
+    const minL = parts[0] && parts[0] !== "" ? parts[0] : undefined;
+    const maxL = parts[1] && parts[1] !== "" ? parts[1] : undefined;
+    return {
+      "xs:restriction": {
+        "@_base": "xs:string",
+        ...(minL !== undefined ? { "xs:minLength": { "@_value": String(minL) } } : {}),
+        ...(maxL !== undefined ? { "xs:maxLength": { "@_value": String(maxL) } } : {}),
+      },
+    } as Record<string, unknown>;
+  }
+  if (op === "bounds") {
+    const s = String(value || "").trim();
+    const left = s.startsWith("(") ? "(" : s.startsWith("[") ? "[" : "";
+    const right = s.endsWith(")") ? ")" : s.endsWith("]") ? "]" : "";
+    const core = s.replace(/^\(|^\[/, '').replace(/\)$|\]$/, '');
+    const m = core.split("..");
+    const min = m[0] !== undefined && m[0] !== "" ? m[0] : undefined;
+    const max = m[1] !== undefined && m[1] !== "" ? m[1] : undefined;
+    const minEx = left === "(";
+    const maxEx = right === ")";
+    return {
+      "xs:restriction": {
+        "@_base": "xs:double",
+        ...(min !== undefined ? { [minEx ? "xs:minExclusive" : "xs:minInclusive"]: { "@_value": String(min) } } : {}),
+        ...(max !== undefined ? { [maxEx ? "xs:maxExclusive" : "xs:maxInclusive"]: { "@_value": String(max) } } : {}),
+      },
+    } as Record<string, unknown>;
+  }
   return undefined;
 }
 
 function toNsEntity(e: IDSEntityFacet): Record<string, unknown> {
   const name = e.ifcClass ? String(e.ifcClass).toUpperCase() : undefined;
   const predefined = e.predefinedType ? String(e.predefinedType).toUpperCase() : undefined;
+  const nameNode = (e.nameOperator ? opToIdsValue(e.nameOperator as any, e.nameValue as any) : undefined) || (name ? idsValue(name) : undefined);
+  const predefNode = (e.predefOperator ? opToIdsValue(e.predefOperator as any, e.predefValue as any) : undefined) || (predefined ? idsValue(predefined) : undefined);
   return {
-    "ids:name": idsValue(name),
-    ...(predefined ? { "ids:predefinedType": idsValue(predefined) } : {}),
+    "ids:name": nameNode,
+    ...(predefNode ? { "ids:predefinedType": predefNode } : {}),
   };
 }
 
@@ -409,6 +451,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     if (spec.requirements?.partOf && spec.requirements.partOf.length) {
       (requirements as any)["ids:partOf"] = spec.requirements.partOf.map((p) => ({
         // simpleCardinality: required | prohibited; default required
+        // When optionality is "none", omit cardinality entirely
         ...(p.optionality === "prohibited" ? { "@_cardinality": "prohibited" } : {}),
         ...(p.instructions ? { "@_instructions": p.instructions } : {}),
         ...(p.relation ? { "@_relation": p.relation } : {}),
@@ -417,7 +460,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     }
     if (spec.requirements?.classifications && spec.requirements.classifications.length) {
       (requirements as any)["ids:classification"] = spec.requirements.classifications.map((c) => ({
-        "@_cardinality": c ? (c as any).optionality || "required" : "required",
+        ...(c && (c as any).optionality && (c as any).optionality !== 'none' ? { "@_cardinality": (c as any).optionality } : {}),
         ...(c.uri ? { "@_uri": c.uri } : {}),
         ...(c.instructions ? { "@_instructions": c.instructions } : {}),
         // sequence: value then system
@@ -427,7 +470,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     }
     if (spec.requirements?.attributes && spec.requirements.attributes.length) {
       (requirements as any)["ids:attribute"] = spec.requirements.attributes.map((a) => ({
-        "@_cardinality": a.optionality || "required",
+        ...(a.optionality && a.optionality !== 'none' ? { "@_cardinality": a.optionality } : {}),
         ...(a.instructions ? { "@_instructions": a.instructions } : {}),
         "ids:name": idsValue(a.name || ""),
         ...(opToIdsValue(a.operator, a.value as any) ? { "ids:value": opToIdsValue(a.operator, a.value as any) } : {}),
@@ -436,7 +479,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     const reqProps = spec.requirements?.properties || [];
     if (reqProps.length) {
       (requirements as any)["ids:property"] = reqProps.map((p) => ({
-        "@_cardinality": p.optionality || "required",
+        ...(p.optionality && p.optionality !== 'none' ? { "@_cardinality": p.optionality } : {}),
         ...(p.uri ? { "@_uri": p.uri } : {}),
         ...(p.instructions ? { "@_instructions": p.instructions } : {}),
         ...(p.datatype ? { "@_dataType": String(p.datatype).toUpperCase() } : {}),
@@ -447,7 +490,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     }
     if (spec.requirements?.materials && spec.requirements.materials.length) {
       (requirements as any)["ids:material"] = spec.requirements.materials.map((m) => ({
-        "@_cardinality": m.optionality || "required",
+        ...(m.optionality && m.optionality !== 'none' ? { "@_cardinality": m.optionality } : {}),
         ...(m.uri ? { "@_uri": m.uri } : {}),
         ...(m.instructions ? { "@_instructions": m.instructions } : {}),
         ...(opToIdsValue(m.operator, m.value as any) ? { "ids:value": opToIdsValue(m.operator, m.value as any) } : {}),
@@ -471,6 +514,7 @@ export function exportToIDSXML(idsData: IDSRoot): string {
       "@_xmlns:ids": "http://standards.buildingsmart.org/IDS",
       "@_xmlns:xs": "http://www.w3.org/2001/XMLSchema",
       "@_xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+      "@_xsi:schemaLocation": "http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd",
       "ids:info": info,
       "ids:specifications": {
         "ids:specification": specs,
@@ -478,7 +522,8 @@ export function exportToIDSXML(idsData: IDSRoot): string {
     },
   } as Record<string, unknown>;
 
-  return builder.build(xmlObject);
+  const xml = builder.build(xmlObject);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${xml}`;
 }
 
 export function parseIDSXmlText(xmlText: string): IDSRoot {
@@ -490,7 +535,8 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
     const info = pickObject(nsGet(idsNs, "info"));
     const headerTitle = nsSimple(info, "title");
     const headerDesc = nsSimple(info, "description") ?? undefined;
-    const headerAuthor = nsSimple(info, "copyright") ?? undefined; // best-effort mapping
+    const headerCopyright = nsSimple(info, "copyright") ?? undefined;
+    const headerAuthor = nsSimple(info, "author") ?? undefined;
     const headerDate = nsSimple(info, "date") ?? undefined;
     const headerVersion = nsSimple(info, "version") ?? undefined;
 
@@ -527,7 +573,7 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
           datatype: (a as any)?.["@_dataType"] ? String((a as any)?.["@_dataType"]) : undefined,
           operator: operator as any,
           value: value as any,
-          optionality: ((a as any)?.["@_cardinality"] as any) || occursFromAttrs(a),
+          optionality: (((a as any)?.["@_cardinality"] as any) || occursFromAttrs(a) || 'none') as any,
           instructions: (a as any)?.["@_instructions"] ? String((a as any)?.["@_instructions"]) : undefined,
         } as IDSAttributeRequirement;
       });
@@ -535,25 +581,33 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
       // Requirements: classifications
       const classNodes = nsArray<Record<string, unknown>>(reqsNode, "classification");
       const classifications: IDSClassificationRequirement[] = classNodes.map((c, cidx) => {
-        const { value } = extractValueAndOperator(nsGet(c, "value"));
-        const v = Array.isArray(value) ? value[0] : typeof value === "string" ? value : undefined;
+        const { operator, value } = extractValueAndOperator(nsGet(c, "value"));
         return {
           id: cryptoRandomId(`cls-${idx}-${cidx}`),
           system: nsSimple(c, "system") || "",
-          value: v,
+          operator: operator as any,
+          value: value as any,
           uri: (c as any)?.["@_uri"] ? String((c as any)?.["@_uri"]) : undefined,
           instructions: (c as any)?.["@_instructions"] ? String((c as any)?.["@_instructions"]) : undefined,
-          optionality: ((c as any)?.["@_cardinality"] as any) || undefined,
+          optionality: (((c as any)?.["@_cardinality"] as any) || 'none') as any,
         } as IDSClassificationRequirement;
       });
 
       // Applicability: entities and attributes/properties if any
-      const appEntities = nsArray<Record<string, unknown>>(applicabilityNode, "entity").map((e, eidx) => ({
+      const appEntities = nsArray<Record<string, unknown>>(applicabilityNode, "entity").map((e, eidx) => {
+        const nameVo = extractValueAndOperator(nsGet(e, "name"));
+        const preVo = extractValueAndOperator(nsGet(e, "predefinedType"));
+        return ({
         id: cryptoRandomId(`aent-${idx}-${eidx}`),
         ifcClass: nsFirstValueText(e, "name"),
         predefinedType: nsFirstValueText(e, "predefinedType"),
+        nameOperator: nameVo.operator as any,
+        nameValue: nameVo.value as any,
+        predefOperator: preVo.operator as any,
+        predefValue: preVo.value as any,
         optionality: occursFromAttrs(e),
-      } as IDSEntityFacet));
+      } as IDSEntityFacet);
+      });
 
       const appAttributes = nsArray<Record<string, unknown>>(applicabilityNode, "attribute").map((a, aidx) => {
         const { operator, value } = extractValueAndOperator(nsGet(a, "value"));
@@ -581,12 +635,12 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
       });
 
       const appClassifications = nsArray<Record<string, unknown>>(applicabilityNode, "classification").map((c, cidx) => {
-        const { value } = extractValueAndOperator(nsGet(c, "value"));
-        const v = Array.isArray(value) ? value[0] : typeof value === "string" ? value : undefined;
+        const { operator, value } = extractValueAndOperator(nsGet(c, "value"));
         return {
           id: cryptoRandomId(`acls-${idx}-${cidx}`),
           system: nsSimple(c, "system") || "",
-          value: v,
+          operator: operator as any,
+          value: value as any,
         } as IDSClassificationRequirement;
       });
 
@@ -630,7 +684,7 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
         return {
           id: cryptoRandomId(`rpart-${idx}-${pidx}`),
           relation: ((p as any)?.["@_relation"] as any) || undefined,
-          optionality: ((p as any)?.["@_cardinality"] as any) || undefined,
+          optionality: (((p as any)?.["@_cardinality"] as any) || 'none') as any,
           instructions: (p as any)?.["@_instructions"] ? String((p as any)?.["@_instructions"]) : undefined,
           entity: entity
             ? ({
@@ -648,7 +702,7 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
           id: cryptoRandomId(`rmat-${idx}-${midx}`),
           operator: operator as any,
           value: (Array.isArray(value) ? value[0] : (value as any)) as any,
-          optionality: ((m as any)?.["@_cardinality"] as any) || occursFromAttrs(m),
+          optionality: (((m as any)?.["@_cardinality"] as any) || occursFromAttrs(m) || 'none') as any,
           uri: (m as any)?.["@_uri"] ? String((m as any)?.["@_uri"]) : undefined,
           instructions: (m as any)?.["@_instructions"] ? String((m as any)?.["@_instructions"]) : undefined,
         } as IDSMaterialRequirement;
@@ -682,7 +736,7 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
           properties: propNodes.map((p, i2) => {
             const base = properties[i2];
             const card = (p as any)?.["@_cardinality"] as any;
-            return { ...base, optionality: (card as any) || base.optionality } as IDSPropertyRequirement;
+            return { ...base, optionality: ((card as any) || base.optionality || 'none') as any } as IDSPropertyRequirement;
           }),
           materials: reqMaterials,
         },
@@ -700,6 +754,7 @@ export function parseIDSXmlText(xmlText: string): IDSRoot {
       header: {
         title: headerTitle ?? "Untitled IDS",
         description: headerDesc,
+        copyright: headerCopyright,
         author: headerAuthor,
         date: headerDate,
         version: headerVersion,
@@ -953,6 +1008,8 @@ function asArray<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v as T[];
   return v !== undefined ? ([v] as T[]) : [];
 }
+
+
 
 
 

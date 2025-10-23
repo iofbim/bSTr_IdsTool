@@ -57,7 +57,7 @@ function newSpecification(): IDSSpecification {
     ifcVersion: "IFC4" as IDSIfcVersion,
     optionality: "required",
     applicability: { ifcClass: "", entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [] },
-    requirements: { entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [], cardinality: "required" },
+    requirements: { entities: [], classifications: [], attributes: [], properties: [], materials: [], partOf: [], cardinality: "none" },
   };
 }
 
